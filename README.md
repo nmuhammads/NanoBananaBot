@@ -20,9 +20,9 @@ NanoBanana Bot — новый Telegram-бот для генерации изоб
    .venv\\Scripts\\activate
    pip install -r requirements.txt
    ```
-4. Запустите бота локально:
+4. Запустите сервер локально (uvicorn):
    ```bash
-   python -m nanobanana_bot.main
+   uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port 8000
    ```
 
 ## Команды
@@ -40,7 +40,7 @@ NanoBananaBot/
 ├── .env.example
 └── nanobanana_bot/
     ├── __init__.py
-    ├── main.py
+    ├── webapp.py
     ├── config.py
     ├── cache.py
     ├── database.py
@@ -63,8 +63,23 @@ NanoBananaBot/
 - Redis — асинхронный клиент `redis.asyncio`.
 
 ## Деплой
-- В среде, поддерживающей Procfile: используйте `worker: python -m nanobanana_bot.main`.
-- Убедитесь, что переменные окружения передаются в runtime.
+Для деплоя на Railway через uvicorn (webhook):
+  1. Добавьте переменные окружения:
+     - `WEBHOOK_URL` — публичный URL вашего Railway сервиса, например `https://<app>.up.railway.app`.
+     - `WEBHOOK_PATH` — путь для приёма обновлений Telegram, по умолчанию `/webhook`.
+     - `WEBHOOK_SECRET_TOKEN` — необязательный секрет для валидации запросов Telegram.
+  2. Procfile должен содержать:
+     ```
+     web: uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port $PORT
+     ```
+  3. Убедитесь, что переменные окружения (`BOT_TOKEN`, Supabase, Redis, NanoBanana) заданы.
+  4. После старта Railway веб-сервиса бот автоматически установит webhook на `WEBHOOK_URL + WEBHOOK_PATH`.
+
+### Локальная проверка uvicorn
+```bash
+uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port 8000
+```
+Затем задайте временный публичный адрес (например, через ngrok) в `WEBHOOK_URL` и проверьте получение обновлений.
 
 ## Лицензия
 - Внутренний проект. Лицензирование по вашей политике.

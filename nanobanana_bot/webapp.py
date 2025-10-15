@@ -1,0 +1,87 @@
+import logging
+from fastapi import FastAPI, Request, Header, HTTPException
+
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.types import Update
+
+from .config import load_settings
+from .cache import Cache
+from .database import Database
+from .utils.nanobanana import NanoBananaClient
+from .middlewares.logging import SimpleLoggingMiddleware
+from .middlewares.rate_limit import RateLimitMiddleware
+from .handlers import start as start_handler
+from .handlers import generate as generate_handler
+
+
+# Initialize settings and core bot components
+settings = load_settings()
+
+bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher()
+
+# Shared services
+cache = Cache(settings.redis_url)
+db = Database(settings.supabase_url, settings.supabase_key)
+client = NanoBananaClient(
+    base_url=settings.nanobanana_api_base,
+    api_key=settings.nanobanana_api_key,
+    timeout_seconds=settings.request_timeout_seconds,
+)
+
+# Middlewares
+dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.middleware")))
+dp.message.middleware(RateLimitMiddleware(1.0))
+
+# Handlers setup
+start_handler.setup(db, cache)
+generate_handler.setup(client, db, cache)
+
+# Routers
+dp.include_router(start_handler.router)
+dp.include_router(generate_handler.router)
+
+
+app = FastAPI(title="NanoBananaBot Webhook")
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    # Ensure webhook URL is provided for webhook mode
+    if not settings.webhook_url:
+        raise RuntimeError("WEBHOOK_URL is required for webhook mode (Railway)")
+
+    base_url = settings.webhook_url.rstrip("/")
+    path = settings.webhook_path
+    url = f"{base_url}{path}"
+
+    await bot.set_webhook(url=url, secret_token=settings.webhook_secret_token)
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    # Gracefully close external resources
+    await cache.close()
+    await bot.session.close()
+
+
+@app.get("/")
+async def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.post(settings.webhook_path)
+async def telegram_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+) -> dict:
+    # Optional verification of Telegram secret token
+    if settings.webhook_secret_token and x_telegram_bot_api_secret_token != settings.webhook_secret_token:
+        raise HTTPException(status_code=403, detail="Invalid secret token")
+
+    data = await request.json()
+    update = Update.model_validate(data)
+    await dp.feed_update(bot, update)
+    return {"ok": True}

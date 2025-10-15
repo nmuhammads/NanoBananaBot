@@ -1,1 +1,1 @@
-worker: python -m nanobanana_bot.main
+web: uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port $PORT

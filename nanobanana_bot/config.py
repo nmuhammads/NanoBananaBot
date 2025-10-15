@@ -14,6 +14,10 @@ class Settings:
     nanobanana_api_base: str
     nanobanana_api_key: Optional[str] = None
     request_timeout_seconds: int = 60
+    # Webhook/Server settings
+    webhook_url: Optional[str] = None
+    webhook_path: str = "/webhook"
+    webhook_secret_token: Optional[str] = None
 
 
 def load_settings() -> Settings:
@@ -27,6 +31,10 @@ def load_settings() -> Settings:
     nanobanana_api_base = os.getenv("NANOBANANA_API_BASE", "https://kie.ai/nano-banana")
     nanobanana_api_key = os.getenv("NANOBANANA_API_KEY")
     request_timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
+    # Webhook
+    webhook_url = os.getenv("WEBHOOK_URL")
+    webhook_path = os.getenv("WEBHOOK_PATH", "/webhook")
+    webhook_secret_token = os.getenv("WEBHOOK_SECRET_TOKEN")
 
     if not bot_token:
         raise RuntimeError("BOT_TOKEN is required")
@@ -41,4 +49,7 @@ def load_settings() -> Settings:
         nanobanana_api_base=nanobanana_api_base,
         nanobanana_api_key=nanobanana_api_key,
         request_timeout_seconds=request_timeout_seconds,
+        webhook_url=webhook_url,
+        webhook_path=webhook_path,
+        webhook_secret_token=webhook_secret_token,
     )
