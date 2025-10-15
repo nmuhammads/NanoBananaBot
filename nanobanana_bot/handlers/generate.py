@@ -29,7 +29,9 @@ async def generate(message: Message) -> None:
     parts = text.split(maxsplit=1)
     prompt = parts[1].strip() if len(parts) > 1 else ""
     if not prompt:
-        await message.answer("Укажите описание: /generate <описание изображения>")
+        await message.answer(
+            "Добавьте текст после команды: /generate космический нано банан на фоне галактики"
+        )
         return
 
     # Token check (assumption: 1 token per generation)

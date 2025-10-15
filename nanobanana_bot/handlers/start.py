@@ -41,7 +41,7 @@ async def start(message: Message) -> None:
             f"Привет, {html.bold(message.from_user.full_name)}!\n\n"
             f"Это NanoBanana Bot — генерация изображений по тексту.\n\n"
             f"Ваш баланс токенов: <b>{balance}</b>\n"
-            f"Команды: /help, /generate <описание>"
+            f"Команды: /help, /generate"
         )
     )
 
@@ -57,7 +57,7 @@ async def help(message: Message) -> None:
     await message.answer(
         (
             "Как использовать:\n"
-            "- /generate <prompt> — создаёт изображение по описанию.\n"
+            "- /generate — создаёт изображение по текстовому запросу.\n"
             "- Пример: /generate космический нано банан на фоне галактики.\n"
         )
     )
