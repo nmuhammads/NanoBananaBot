@@ -53,7 +53,7 @@ async def profile(message: Message) -> None:
             f"{t(lang, 'profile.name', name=html.bold(full_name))}\n"
             f"{t(lang, 'profile.username', username=('@' + username) if username else '—')}\n"
             f"{t(lang, 'profile.id', id=message.from_user.id)}\n"
-            f"{t(lang, 'profile.lang', lang=language_code or '—')}\n\n"
+            f"{t(lang, 'profile.lang', lang_code=language_code or '—')}\n\n"
             f"{t(lang, 'profile.balance', balance=balance)}\n\n"
             f"{t(lang, 'profile.actions')}"
         ),

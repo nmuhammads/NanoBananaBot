@@ -60,7 +60,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "profile.name": "Имя: {name}",
         "profile.username": "Username: {username}",
         "profile.id": "ID: {id}",
-        "profile.lang": "Язык: {lang}",
+        "profile.lang": "Язык: {lang_code}",
         "profile.balance": "💰 Баланс: <b>{balance}</b> ✨",
         "profile.actions": (
             "Действия:\n"
@@ -160,7 +160,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "profile.name": "Name: {name}",
         "profile.username": "Username: {username}",
         "profile.id": "ID: {id}",
-        "profile.lang": "Language: {lang}",
+        "profile.lang": "Language: {lang_code}",
         "profile.balance": "💰 Balance: <b>{balance}</b> ✨",
         "profile.actions": (
             "Actions:\n"
