@@ -8,7 +8,6 @@ from aiogram.types import Update, BotCommand
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
-from .cache import Cache
 from .database import Database
 from .utils.nanobanana import NanoBananaClient
 from .middlewares.logging import SimpleLoggingMiddleware
@@ -25,7 +24,6 @@ bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=Pars
 dp = Dispatcher(storage=MemoryStorage())
 
 # Shared services
-cache = Cache(settings.redis_url)
 db = Database(settings.supabase_url, settings.supabase_key)
 client = NanoBananaClient(
     base_url=settings.nanobanana_api_base,
@@ -38,9 +36,9 @@ dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.midd
 dp.message.middleware(RateLimitMiddleware(1.0))
 
 # Handlers setup
-start_handler.setup(db, cache)
-generate_handler.setup(client, db, cache)
-profile_handler.setup(db, cache)
+start_handler.setup(db)
+generate_handler.setup(client, db)
+profile_handler.setup(db)
 
 # Routers
 dp.include_router(start_handler.router)
@@ -88,7 +86,6 @@ async def on_startup() -> None:
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
     # Gracefully close external resources
-    await cache.close()
     await bot.session.close()
 
 
