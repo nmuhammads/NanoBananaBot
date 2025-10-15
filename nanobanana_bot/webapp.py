@@ -134,12 +134,42 @@ async def nanobanana_callback(request: Request) -> dict:
     data = await request.json()
     logger.info("NanoBanana callback received: %s", {k: data.get(k) for k in ["imageUrl", "image_url", "generationId", "userId", "taskId"]})
 
+    # KIE format: top-level {code,msg,data}, where data.resultJson is a JSON string with resultUrls[]
+    # and data.param is a JSON string that contains meta.generationId/userId.
     image_url = data.get("imageUrl") or data.get("image_url") or (data.get("data") or {}).get("imageUrl")
     generation_id = data.get("generationId") or (data.get("data") or {}).get("generationId")
     user_id = data.get("userId") or (data.get("data") or {}).get("userId")
 
+    try:
+        payload_data = data.get("data") or {}
+        # Parse resultJson if present
+        result_json = payload_data.get("resultJson")
+        if result_json and not image_url:
+            import json
+            try:
+                result_obj = json.loads(result_json)
+                urls = result_obj.get("resultUrls") or []
+                if isinstance(urls, list) and urls:
+                    image_url = urls[0]
+            except Exception as e:
+                logger.warning("Failed to parse resultJson: %s", e)
+
+        # Parse param.meta for generationId/userId if missing
+        param_json = payload_data.get("param")
+        if param_json and (generation_id is None or user_id is None):
+            import json
+            try:
+                param_obj = json.loads(param_json)
+                meta = param_obj.get("meta") or {}
+                generation_id = generation_id or meta.get("generationId")
+                user_id = user_id or meta.get("userId")
+            except Exception as e:
+                logger.warning("Failed to parse param meta: %s", e)
+    except Exception as e:
+        logger.warning("General parsing error for KIE callback: %s", e)
+
     if not image_url:
-        logger.warning("NanoBanana callback missing image_url/imageUrl: %s", data)
+        logger.warning("NanoBanana callback missing image url after parsing: %s", data)
         return {"ok": False, "error": "missing image url"}
 
     try:
