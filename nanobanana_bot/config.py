@@ -16,7 +16,7 @@ class Settings:
     nanobanana_api_key: Optional[str] = None
     # Tribute payments
     tribute_api_key: Optional[str] = None
-    tribute_product_map: dict[int, int] = field(default_factory=dict)  # tokens -> product_id
+    tribute_product_map: dict[int, str] = field(default_factory=dict)  # tokens -> product_id (string or numeric)
     request_timeout_seconds: int = 60
     # Webhook/Server settings
     webhook_url: Optional[str] = None
@@ -39,11 +39,17 @@ def load_settings() -> Settings:
     tribute_product_map_raw = os.getenv("TRIBUTE_PRODUCT_MAP", "{}")
     try:
         parsed = json.loads(tribute_product_map_raw)
-        # Normalize to int -> int mapping
-        tribute_product_map = {
-            int(k): int(v) for k, v in parsed.items()
-            if str(k).isdigit() and str(v).isdigit()
-        }
+        tribute_product_map: dict[int, str] = {}
+        for k, v in (parsed or {}).items():
+            # tokens must be int-like
+            try:
+                tokens = int(str(k))
+            except Exception:
+                continue
+            # product_id can be string slug or numeric; store as string
+            pid = str(v).strip()
+            if pid:
+                tribute_product_map[tokens] = pid
     except Exception:
         tribute_product_map = {}
     request_timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))

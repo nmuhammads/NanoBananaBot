@@ -67,8 +67,13 @@ def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
     if _settings and _settings.tribute_product_map:
         for tokens, pid in sorted(_settings.tribute_product_map.items()):
             if method == "card":
-                url = f"https://t.me/tribute/app?startapp=p{pid}"
+                slug = str(pid)
+                # Mini-app expects startapp to be product slug; prefix 'p' only if missing
+                if not slug.startswith("p"):
+                    slug = "p" + slug
+                url = f"https://t.me/tribute/app?startapp={slug}"
             else:
+                # Web link uses /p/<slug> directly
                 url = f"https://web.tribute.tg/p/{pid}"
             products.append([InlineKeyboardButton(text=f"{tokens} ✨", url=url)])
     return InlineKeyboardMarkup(inline_keyboard=products or [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]])

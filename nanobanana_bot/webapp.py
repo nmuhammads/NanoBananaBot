@@ -262,15 +262,19 @@ async def tribute_webhook(request: Request, trbt_signature: str | None = Header(
         logger.warning("Tribute webhook missing product_id or telegram_user_id: %s", data)
         return {"ok": False, "error": "missing fields"}
 
+    # product_id can be a string slug or numeric; user id must be int
+    product_id = str(product_id).strip()
     try:
-        product_id = int(product_id)
         tg_user_id = int(tg_user_id)
     except Exception:
-        logger.warning("Tribute webhook invalid ids: pid=%s, tg=%s", product_id, tg_user_id)
+        logger.warning("Tribute webhook invalid telegram_user_id: tg=%s", tg_user_id)
         return {"ok": False, "error": "invalid ids"}
 
-    tokens_by_pid = {pid: tokens for tokens, pid in settings.tribute_product_map.items()}
-    tokens = tokens_by_pid.get(product_id)
+    tokens_by_pid = {str(pid): tokens for tokens, pid in settings.tribute_product_map.items()}
+    # Accept both slug and 'p'+slug forms
+    tokens = tokens_by_pid.get(product_id) or (
+        tokens_by_pid.get(product_id[1:]) if product_id.startswith("p") else None
+    )
     if not tokens:
         logger.warning("Unknown Tribute product_id=%s, no tokens credited", product_id)
         return {"ok": True}
