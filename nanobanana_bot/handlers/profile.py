@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 from ..database import Database
+from ..utils.i18n import t, normalize_lang
 
 
 router = Router(name="profile")
@@ -27,7 +28,6 @@ async def profile(message: Message) -> None:
         language_code=message.from_user.language_code,
     )
 
-    # Баланс хранится только в Supabase
     balance = await _db.get_token_balance(message.from_user.id)
 
     username = user.get("username")
@@ -38,31 +38,29 @@ async def profile(message: Message) -> None:
     full_name = (first_name or "") + (" " + last_name if last_name else "")
     full_name = full_name.strip() or message.from_user.full_name
 
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Профиль 👤"), KeyboardButton(text="Пополнить баланс ✨")],
-            [KeyboardButton(text="Сгенерировать 🖼️")],
+            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "kb.topup"))],
+            [KeyboardButton(text=t(lang, "kb.generate"))],
         ],
         resize_keyboard=True,
     )
 
     await message.answer(
         (
-            f"👤 <b>Профиль</b>\n\n"
-            f"Имя: {html.bold(full_name)}\n"
-            f"Username: {('@' + username) if username else '—'}\n"
-            f"ID: {message.from_user.id}\n"
-            f"Язык: {language_code or '—'}\n\n"
-            f"💰 Баланс: <b>{balance}</b> ✨\n\n"
-            f"Действия:\n"
-            f"• Пополнить баланс ✨ — откроет меню пополнения\n"
-            f"• Сгенерировать 🖼️ — запустит мастер генерации\n\n"
-            f"Команды: /help"
+            f"{t(lang, 'profile.title')}\n\n"
+            f"{t(lang, 'profile.name', name=html.bold(full_name))}\n"
+            f"{t(lang, 'profile.username', username=('@' + username) if username else '—')}\n"
+            f"{t(lang, 'profile.id', id=message.from_user.id)}\n"
+            f"{t(lang, 'profile.lang', lang=language_code or '—')}\n\n"
+            f"{t(lang, 'profile.balance', balance=balance)}\n\n"
+            f"{t(lang, 'profile.actions')}"
         ),
         reply_markup=keyboard,
     )
 
 
-@router.message(F.text == "Профиль 👤")
+@router.message((F.text == t("ru", "kb.profile")) | (F.text == t("en", "kb.profile")))
 async def profile_text(message: Message) -> None:
     await profile(message)

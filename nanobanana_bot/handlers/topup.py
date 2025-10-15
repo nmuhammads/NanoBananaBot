@@ -10,6 +10,7 @@ from aiogram.types import (
 )
 
 from ..database import Database
+from ..utils.i18n import t, normalize_lang
 import logging
 
 
@@ -43,28 +44,32 @@ def topup_keyboard() -> InlineKeyboardMarkup:
 @router.message(Command("topup"))
 async def topup(message: Message) -> None:
     assert _db is not None
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
     balance = await _db.get_token_balance(message.from_user.id)
     await message.answer(
         (
-            "Пополнение токенов ✨\n"
-            f"Ваш текущий баланс: <b>{balance}</b> ✨\n"
-            "Выберите сумму (1 ✨ = 1 токен):"
+            f"{t(lang, 'topup.title')}\n"
+            f"{t(lang, 'topup.balance', balance=balance)}\n"
+            f"{t(lang, 'topup.choose')}"
         ),
         reply_markup=topup_keyboard(),
     )
 
 
-@router.message((F.text == "Пополнить баланс") | (F.text == "Пополнить баланс ✨"))
+@router.message((F.text == t("ru", "kb.topup")) | (F.text == t("en", "kb.topup")))
 async def topup_text(message: Message) -> None:
     await topup(message)
 
 
 async def _send_invoice(message: Message, amount: int) -> None:
-    prices = [LabeledPrice(label=f"Пополнение {amount} токенов", amount=amount)]
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    prices = [LabeledPrice(label=t(lang, "topup.invoice_label", amount=amount), amount=amount)]
     await message.bot.send_invoice(
         chat_id=message.chat.id,
-        title="Пополнение токенов",
-        description=f"Покупка {amount} токенов (Telegram Stars)",
+        title=t(lang, "topup.invoice_title"),
+        description=t(lang, "topup.invoice_desc", amount=amount),
         payload=f"topup:{amount}",
         provider_token="",  # Stars для цифровых товаров — без провайдера
         currency="XTR",
@@ -79,19 +84,23 @@ async def choose_topup(callback: CallbackQuery) -> None:
     try:
         amount = int(data.split(":", 1)[1])
     except Exception:
-        await callback.answer("Некорректная сумма", show_alert=True)
+        user = await _db.get_user(callback.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+        await callback.answer(t(lang, "topup.invalid_amount"), show_alert=True)
         return
 
     try:
-        await callback.message.answer(f"Оформляю счёт на {amount} ✨…")
+        user = await _db.get_user(callback.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+        await callback.message.answer(t(lang, "topup.prepare", amount=amount))
         await _send_invoice(callback.message, amount)
-        await callback.answer("Счёт отправлен")
+        await callback.answer("OK")
     except Exception as e:
         _logger.exception("Failed to send Stars invoice: %s", e)
-        await callback.answer("Не удалось выставить счёт. Проверьте настройки Stars у бота.", show_alert=True)
-        await callback.message.answer(
-            "Оплата недоступна. Убедитесь, что включены Telegram Stars для бота (BotFather)."
-        )
+        user = await _db.get_user(callback.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+        await callback.answer(t(lang, "topup.invoice_fail"), show_alert=True)
+        await callback.message.answer(t(lang, "topup.payment_unavailable"))
 
 
 @router.pre_checkout_query()
@@ -105,7 +114,9 @@ async def process_successful_payment(message: Message) -> None:
     assert _db is not None
     sp = message.successful_payment
     if not sp or sp.currency != "XTR":
-        await message.answer("Оплата не в валюте XTR, обращайтесь в поддержку.")
+        user = await _db.get_user(message.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+        await message.answer(t(lang, "topup.currency_mismatch"))
         return
 
     amount = int(sp.total_amount)
@@ -113,6 +124,6 @@ async def process_successful_payment(message: Message) -> None:
     new_balance = current + amount
     await _db.set_token_balance(message.from_user.id, new_balance)
 
-    await message.answer(
-        f"Успешная оплата: начислено {amount} токенов. Ваш новый баланс: {new_balance}.\nСпасибо!"
-    )
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    await message.answer(t(lang, "topup.success", amount=amount, balance=new_balance))

@@ -53,6 +53,17 @@ class Database:
         # upsert by user_id
         self.client.table("users").upsert({"user_id": user_id, "balance": int(balance)}).execute()
 
+    async def set_language_code(self, user_id: int, language_code: str) -> None:
+        # update language for existing user
+        self.client.table("users").update({"language_code": language_code}).eq("user_id", user_id).execute()
+
+    async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("users").select("*").eq("user_id", user_id).limit(1).execute()
+        )
+        rows = getattr(res, "data", []) or []
+        return rows[0] if rows else None
+
     async def create_generation(self, user_id: int, prompt: str) -> Dict[str, Any]:
         created = (
             self.client.table("generations")

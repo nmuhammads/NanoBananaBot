@@ -11,6 +11,7 @@ from aiogram.fsm.context import FSMContext
 
 from ..utils.nanobanana import NanoBananaClient
 from ..database import Database
+from ..utils.i18n import t, normalize_lang
 import logging
 
 
@@ -35,11 +36,11 @@ class GenerateStates(StatesGroup):
     confirming = State()
 
 
-def type_keyboard() -> InlineKeyboardMarkup:
+def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     kb = [
-        [InlineKeyboardButton(text="Только текст 📝", callback_data="gen_type:text")],
-        [InlineKeyboardButton(text="Текст + фото 🖼️", callback_data="gen_type:text_photo")],
-        [InlineKeyboardButton(text="Текст + несколько фото 📷", callback_data="gen_type:text_multi")],
+        [InlineKeyboardButton(text=t(lang, "gen.type.text"), callback_data="gen_type:text")],
+        [InlineKeyboardButton(text=t(lang, "gen.type.text_photo"), callback_data="gen_type:text_photo")],
+        [InlineKeyboardButton(text=t(lang, "gen.type.text_multi"), callback_data="gen_type:text_multi")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -70,16 +71,16 @@ def ratio_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def confirm_keyboard() -> InlineKeyboardMarkup:
+def confirm_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Подтвердить", callback_data="confirm:ok")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="confirm:cancel")],
+            [InlineKeyboardButton(text=t(lang, "gen.confirm.ok"), callback_data="confirm:ok")],
+            [InlineKeyboardButton(text=t(lang, "gen.confirm.cancel"), callback_data="confirm:cancel")],
         ]
     )
 
 
-def photo_count_keyboard(selected: int | None = None) -> InlineKeyboardMarkup:
+def photo_count_keyboard(selected: int | None = None, lang: str | None = None) -> InlineKeyboardMarkup:
     """Инлайн‑клавиатура выбора количества фото: 1–5, 6–10, затем подтверждение.
     Если число выбрано, рядом с ним показывается галочка.
     """
@@ -94,7 +95,7 @@ def photo_count_keyboard(selected: int | None = None) -> InlineKeyboardMarkup:
     # Второй ряд: 6–10
     rows.append([btn(6), btn(7), btn(8), btn(9), btn(10)])
     # Третий ряд: подтверждение
-    rows.append([InlineKeyboardButton(text="Подтвердить ✅", callback_data="pc:confirm")])
+    rows.append([InlineKeyboardButton(text=t(lang, "gen.confirm_label"), callback_data="pc:confirm")])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -107,18 +108,20 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     balance = await _db.get_token_balance(message.from_user.id)
     _logger.info("/generate start user=%s balance=%s", message.from_user.id, balance)
     if balance < 4:
-        await message.answer(
-            f"Недостаточно токенов: требуется 4 токена за генерацию. Ваш баланс: {balance}.\nПополнить баланс: /topup"
-        )
+        user = await _db.get_user(message.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
         _logger.warning("User %s has insufficient balance (need 4)", message.from_user.id)
         return
 
     await state.clear()
     await state.set_state(GenerateStates.choosing_type)
-    await state.update_data(user_id=message.from_user.id)
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    await state.update_data(user_id=message.from_user.id, lang=lang)
     await message.answer(
-        "🪄 Выберите способ генерации:",
-        reply_markup=type_keyboard(),
+        t(lang, "gen.choose_method"),
+        reply_markup=type_keyboard(lang),
     )
 
 
@@ -132,9 +135,9 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
     _logger.info("User %s chose type=%s", callback.from_user.id, gen_type)
     await state.update_data(gen_type=gen_type)
     await state.set_state(GenerateStates.waiting_prompt)
-    await callback.message.edit_text(
-        "📝 Введите текст для генерации:"
-    )
+    st = await state.get_data()
+    lang = st.get("lang")
+    await callback.message.edit_text(t(lang, "gen.enter_prompt"))
     await callback.answer()
 
 
@@ -142,7 +145,9 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
 async def receive_prompt(message: Message, state: FSMContext) -> None:
     prompt = (message.text or "").strip()
     if not prompt:
-        await message.answer("Пожалуйста, отправьте текстовый промпт.")
+        st = await state.get_data()
+        lang = st.get("lang")
+        await message.answer(t(lang, "gen.prompt_empty"))
         _logger.warning("User %s sent empty prompt", message.from_user.id)
         return
     _logger.info("User %s provided prompt len=%s", message.from_user.id, len(prompt))
@@ -150,30 +155,27 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
 
     data = await state.get_data()
     gen_type = data.get("gen_type")
+    lang = data.get("lang")
     if gen_type == "text":
         await state.set_state(GenerateStates.choosing_ratio)
-        await message.answer("📐 Выберите соотношение сторон:", reply_markup=ratio_keyboard())
+        await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
         return
     elif gen_type == "text_photo":
         await state.update_data(photos_needed=1, photos=[])
         await state.set_state(GenerateStates.waiting_photos)
-        await message.answer("📷 Загрузите фото, которое будет использовано вместе с текстом.")
+        await message.answer(t(lang, "gen.upload_photo"))
         return
     elif gen_type == "text_multi":
         await state.set_state(GenerateStates.waiting_photo_count)
         await state.update_data(selected_photo_count=None)
         await message.answer(
-            (
-                "📷 <b>Выберите количество фото</b>\n\n"
-                "• 1–5 в первом ряду, 6–10 во втором\n"
-                "• Нажмите ‘Подтвердить ✅’ после выбора"
-            ),
-            reply_markup=photo_count_keyboard(None),
+            t(lang, "gen.choose_count"),
+            reply_markup=photo_count_keyboard(None, lang),
         )
         _logger.info("User %s chose multi-photo mode", message.from_user.id)
         return
     else:
-        await message.answer("Неизвестный тип генерации. Начните заново: /generate")
+        await message.answer(t(lang, "gen.unknown_type"))
         await state.clear()
 
 
@@ -183,9 +185,10 @@ async def receive_photo_count(message: Message, state: FSMContext) -> None:
     # подскажем использовать кнопки.
     st = await state.get_data()
     selected = st.get("selected_photo_count")
+    lang = st.get("lang")
     await message.answer(
-        "Пожалуйста, выберите количество фото с помощью кнопок ниже.",
-        reply_markup=photo_count_keyboard(selected if isinstance(selected, int) else None),
+        t(lang, "gen.use_buttons"),
+        reply_markup=photo_count_keyboard(selected if isinstance(selected, int) else None, lang),
     )
     _logger.info("User %s typed while waiting_photo_count; suggested inline buttons", message.from_user.id)
 
@@ -203,21 +206,23 @@ async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> N
             await callback.answer()
             return
         await state.update_data(selected_photo_count=count)
-        await callback.message.edit_reply_markup(reply_markup=photo_count_keyboard(count))
-        await callback.answer(f"Выбрано: {count}")
+        st = await state.get_data()
+        lang = st.get("lang")
+        await callback.message.edit_reply_markup(reply_markup=photo_count_keyboard(count, lang))
+        await callback.answer()
         _logger.info("User %s selected photo_count=%s", callback.from_user.id, count)
         return
     elif data == "pc:confirm":
         st = await state.get_data()
         count = st.get("selected_photo_count")
         if not isinstance(count, int) or count < 1 or count > 10:
-            await callback.answer("Сначала выберите количество 1–10")
+            lang = st.get("lang")
+            await callback.answer(t(lang, "gen.use_buttons"), show_alert=True)
             return
         await state.update_data(photos_needed=count, photos=[])
         await state.set_state(GenerateStates.waiting_photos)
-        await callback.message.edit_text(
-            f"✅ Выбрано: {count} фото.\n📸 Фото 1 из {count}: отправьте первое изображение."
-        )
+        lang = st.get("lang")
+        await callback.message.edit_text(t(lang, "gen.confirmed_count", count=count))
         await callback.answer("Готово")
         _logger.info("User %s confirmed photo_count=%s", callback.from_user.id, count)
         return
@@ -239,14 +244,16 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
 
     if len(photos) < photos_needed:
         idx = len(photos)
-        await message.answer(
-            f"✅ Фото {idx} из {photos_needed} получено.\n📸 Отправьте фото {idx + 1} из {photos_needed}."
-        )
+        st = await state.get_data()
+        lang = st.get("lang")
+        await message.answer(t(lang, "gen.photo_received", idx=idx, total=photos_needed, next=idx + 1))
         return
 
     # Все фото получены — переходим к выбору соотношения сторон
     await state.set_state(GenerateStates.choosing_ratio)
-    await message.answer("📐 Выберите соотношение сторон:", reply_markup=ratio_keyboard())
+    st = await state.get_data()
+    lang = st.get("lang")
+    await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos))
@@ -255,11 +262,12 @@ async def require_photo(message: Message, state: FSMContext) -> None:
     photos = list(st.get("photos", []))
     photos_needed = int(st.get("photos_needed", 1))
     next_idx = min(len(photos) + 1, photos_needed)
-    await message.answer(f"📷 Пожалуйста, отправьте фото {next_idx} из {photos_needed}.")
+    lang = st.get("lang")
+    await message.answer(t(lang, "gen.require_photo", next=next_idx, total=photos_needed))
 
 
 # Текстовый запуск генерации с нижней клавиатуры
-@router.message(F.text == "Сгенерировать 🖼️")
+@router.message((F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
 async def start_generate_text(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
@@ -280,24 +288,26 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     photos = st.get("photos", [])
     photos_needed = st.get("photos_needed")
 
+    st2 = await state.get_data()
+    lang = st2.get("lang")
     type_map = {
-        "text": "Только текст 📝",
-        "text_photo": "Текст + фото 🖼️",
-        "text_multi": "Текст + несколько фото 📷",
+        "text": t(lang, "gen.type.text"),
+        "text_photo": t(lang, "gen.type.text_photo"),
+        "text_multi": t(lang, "gen.type.text_multi"),
     }
     gen_type_label = type_map.get(gen_type, str(gen_type))
 
     summary = (
-        "🔍 <b>Проверьте данные перед генерацией</b>\n\n"
-        f"• Тип: {gen_type_label}\n"
-        f"• Промпт: {html.bold(prompt)}\n"
-        f"• Соотношение сторон: {ratio}\n"
+        f"{t(lang, 'gen.summary.title')}\n\n"
+        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(prompt))}\n"
+        f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
     if gen_type in {"text_photo", "text_multi"}:
         summary += f"• Фото: {len(photos)} из {photos_needed}"
 
     await state.set_state(GenerateStates.confirming)
-    await callback.message.edit_text(summary, reply_markup=confirm_keyboard())
+    await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
     await callback.answer()
 
 
@@ -306,8 +316,10 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     choice = (callback.data or "")
     if choice == "confirm:cancel":
         await state.clear()
-        await callback.message.edit_text("Генерация отменена.")
-        await callback.answer("Отменено")
+        st = await state.get_data()
+        lang = st.get("lang")
+        await callback.message.edit_text(t(lang, "gen.canceled"))
+        await callback.answer("Canceled")
         _logger.info("User %s canceled generation", callback.from_user.id)
         return
     if choice != "confirm:ok":
@@ -326,9 +338,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
     if balance < 4:
-        await callback.message.edit_text(
-            f"Недостаточно токенов: требуется 4 токена за генерацию. Ваш баланс: {balance}.\nПополнить баланс: /topup"
-        )
+        lang = st.get("lang")
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
         await state.clear()
         await callback.answer()
         _logger.warning("User %s insufficient balance at confirm (need 4)", user_id)
@@ -384,11 +395,10 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             new_balance = max(0, int(current_balance) - 4)
             await _db.set_token_balance(user_id, new_balance)
             _logger.info("Debited 4 tokens (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
-            await callback.message.edit_text(
-                "Задача отправлена в генерацию. Результат придёт в этом чате чуть позже."
-            )
+            lang = st.get("lang")
+            await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
-            await callback.answer("Запущено")
+            await callback.answer("Started")
             return
 
         if gen_id is not None:
@@ -408,13 +418,14 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
 
+    lang = st.get("lang")
     await callback.message.edit_caption(
-        caption=f"Готово! Остаток токенов: {new_balance}\nСоотношение: {ratio}",
+        caption=t(lang, "gen.done_text", balance=new_balance, ratio=ratio),
     ) if callback.message.photo else await callback.message.edit_text(
-        f"Готово! Остаток токенов: {new_balance}\nСоотношение: {ratio}"
+        t(lang, "gen.done_text", balance=new_balance, ratio=ratio)
     )
     # Отправим изображение отдельным сообщением
-    await callback.message.answer_photo(photo=image_url, caption=f"Результат генерации")
+    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"))
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
-    await callback.answer("Запущено")
+    await callback.answer("Started")

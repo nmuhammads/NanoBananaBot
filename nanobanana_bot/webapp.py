@@ -10,6 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from .config import load_settings
 from .database import Database
 from .utils.nanobanana import NanoBananaClient
+from .utils.i18n import t, normalize_lang
 from .middlewares.logging import SimpleLoggingMiddleware
 from .middlewares.rate_limit import RateLimitMiddleware
 from .handlers import start as start_handler
@@ -200,7 +201,14 @@ async def nanobanana_callback(request: Request) -> dict:
         # If we have user_id, send photo to the user chat
         if user_id is not None:
             try:
-                await bot.send_photo(chat_id=int(user_id), photo=image_url, caption="Результат генерации")
+                # Определим язык пользователя для подписи
+                try:
+                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
+                    rows = getattr(res, "data", []) or []
+                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                except Exception:
+                    lang = "ru"
+                await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=t(lang, "gen.result_caption"))
             except Exception as e:
                 logger.warning("Failed to send photo to user %s: %s", user_id, e)
         else:
