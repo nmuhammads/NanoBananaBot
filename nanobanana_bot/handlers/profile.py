@@ -64,3 +64,8 @@ async def profile(message: Message) -> None:
 @router.message((F.text == t("ru", "kb.profile")) | (F.text == t("en", "kb.profile")))
 async def profile_text(message: Message) -> None:
     await profile(message)
+
+# Дополнительный fallback, если текст кнопки отличается или содержит лишние символы/эмодзи
+@router.message(F.text.regexp(r"(?i)^\s*\/?\s*(Профиль|Profile).*$"))
+async def profile_text_fallback(message: Message) -> None:
+    await profile(message)

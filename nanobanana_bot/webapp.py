@@ -91,6 +91,7 @@ async def on_startup() -> None:
             BotCommand(command="profile", description="Профиль и баланс"),
             BotCommand(command="generate", description="Генерация изображения"),
             BotCommand(command="topup", description="Пополнить баланс токенов"),
+            BotCommand(command="lang", description="Выбрать язык"),
             BotCommand(command="help", description="Список команд"),
         ])
     except Exception as e:

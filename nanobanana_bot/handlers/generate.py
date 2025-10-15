@@ -41,6 +41,7 @@ def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=t(lang, "gen.type.text"), callback_data="gen_type:text")],
         [InlineKeyboardButton(text=t(lang, "gen.type.text_photo"), callback_data="gen_type:text_photo")],
         [InlineKeyboardButton(text=t(lang, "gen.type.text_multi"), callback_data="gen_type:text_multi")],
+        [InlineKeyboardButton(text=t(lang, "gen.type.edit_photo"), callback_data="gen_type:edit_photo")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -134,9 +135,17 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
     gen_type = data.split(":", 1)[1]
     _logger.info("User %s chose type=%s", callback.from_user.id, gen_type)
     await state.update_data(gen_type=gen_type)
-    await state.set_state(GenerateStates.waiting_prompt)
     st = await state.get_data()
     lang = st.get("lang")
+    # Для режима редактирования: сначала просим фото, затем текст
+    if gen_type == "edit_photo":
+        await state.update_data(photos_needed=1, photos=[])
+        await state.set_state(GenerateStates.waiting_photos)
+        await callback.message.edit_text(t(lang, "gen.upload_photo"))
+        await callback.answer()
+        return
+    # Остальные режимы: сначала просим промпт
+    await state.set_state(GenerateStates.waiting_prompt)
     await callback.message.edit_text(t(lang, "gen.enter_prompt"))
     await callback.answer()
 
@@ -173,6 +182,34 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
             reply_markup=photo_count_keyboard(None, lang),
         )
         _logger.info("User %s chose multi-photo mode", message.from_user.id)
+        return
+    elif gen_type == "edit_photo":
+        # В режиме редактирования фото приходит раньше, сейчас запрашиваем подтверждение сразу,
+        # пропускаем выбор соотношения и используем Auto (как у источника)
+        st2 = await state.get_data()
+        photos = st2.get("photos", [])
+        photos_needed = st2.get("photos_needed", 1)
+        ratio_label = t(lang, "gen.ratio.auto")
+        await state.update_data(ratio="auto")
+
+        type_map = {
+            "text": t(lang, "gen.type.text"),
+            "text_photo": t(lang, "gen.type.text_photo"),
+            "text_multi": t(lang, "gen.type.text_multi"),
+            "edit_photo": t(lang, "gen.type.edit_photo"),
+        }
+        gen_type_label = type_map.get(gen_type, str(gen_type))
+
+        summary = (
+            f"{t(lang, 'gen.summary.title')}\n\n"
+            f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+            f"{t(lang, 'gen.summary.prompt', prompt=html.bold(prompt))}\n"
+            f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
+        )
+        summary += f"• Фото: {len(photos)} из {photos_needed}"
+
+        await state.set_state(GenerateStates.confirming)
+        await message.answer(summary, reply_markup=confirm_keyboard(lang))
         return
     else:
         await message.answer(t(lang, "gen.unknown_type"))
@@ -249,10 +286,17 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
         await message.answer(t(lang, "gen.photo_received", idx=idx, total=photos_needed, next=idx + 1))
         return
 
-    # Все фото получены — переходим к выбору соотношения сторон
-    await state.set_state(GenerateStates.choosing_ratio)
+    # Все фото получены
     st = await state.get_data()
     lang = st.get("lang")
+    gen_type = st.get("gen_type")
+    if gen_type == "edit_photo":
+        # В режиме редактирования после фото просим промпт
+        await state.set_state(GenerateStates.waiting_prompt)
+        await message.answer(t(lang, "gen.edit.enter_prompt"))
+        return
+    # Обычные режимы — выбор соотношения сторон
+    await state.set_state(GenerateStates.choosing_ratio)
     await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
 
 
@@ -359,7 +403,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         "9:16": "9:16",
         "16:9": "16:9",
     }
-    image_size = ratio_map.get(ratio, "1:1")
+    # Для auto не задаём image_size, чтобы провайдер сохранил исходное соотношение
+    image_size = ratio_map.get(ratio) if ratio in ratio_map else None
     # Выбор модели: если есть фото — edit, иначе text-only
     model = "google/nano-banana-edit" if len(photos) > 0 else "google/nano-banana"
 
