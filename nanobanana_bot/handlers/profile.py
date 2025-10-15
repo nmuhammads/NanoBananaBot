@@ -48,12 +48,15 @@ async def profile(message: Message) -> None:
 
     await message.answer(
         (
-            f"Профиль пользователя\n\n"
+            f"👤 <b>Профиль</b>\n\n"
             f"Имя: {html.bold(full_name)}\n"
             f"Username: {('@' + username) if username else '—'}\n"
             f"ID: {message.from_user.id}\n"
             f"Язык: {language_code or '—'}\n\n"
-            f"Баланс токенов: <b>{balance}</b>\n"
+            f"💰 Баланс: <b>{balance}</b> ✨\n\n"
+            f"Действия:\n"
+            f"• Пополнить баланс ✨ — откроет меню пополнения\n"
+            f"• Сгенерировать 🖼️ — запустит мастер генерации\n\n"
             f"Команды: /help"
         ),
         reply_markup=keyboard,
