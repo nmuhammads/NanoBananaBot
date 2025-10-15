@@ -50,11 +50,7 @@ async def start(message: Message) -> None:
     )
 
 
-@router.message()
-async def fallback(message: Message) -> None:
-    # Simple echo for non-command messages in start router
-    if message.text and message.text.strip().lower() in {"help", "/help"}:
-        await help(message)
+# Убираем универсальный обработчик без фильтров, чтобы не мешать командам
 
 
 @router.message(Command("help"))

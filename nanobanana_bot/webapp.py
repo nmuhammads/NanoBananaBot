@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request, Header, HTTPException
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Update
+from aiogram.types import Update, BotCommand
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
@@ -67,7 +67,22 @@ async def on_startup() -> None:
     except Exception as e:
         logging.getLogger("nanobanana.middleware").warning("Failed to delete old webhook: %s", e)
 
-    await bot.set_webhook(url=url, secret_token=settings.webhook_secret_token)
+    await bot.set_webhook(
+        url=url,
+        secret_token=settings.webhook_secret_token,
+        allowed_updates=["message", "callback_query"],
+    )
+
+    # Register bot commands for user convenience
+    try:
+        await bot.set_my_commands([
+            BotCommand(command="start", description="Приветствие"),
+            BotCommand(command="profile", description="Профиль и баланс"),
+            BotCommand(command="generate", description="Генерация изображения"),
+            BotCommand(command="help", description="Список команд"),
+        ])
+    except Exception as e:
+        logging.getLogger("nanobanana.middleware").warning("Failed to set bot commands: %s", e)
 
 
 @app.on_event("shutdown")
