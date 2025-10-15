@@ -1,5 +1,5 @@
 from aiogram import Router, html
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 
 from ..database import Database
@@ -39,9 +39,13 @@ async def start(message: Message) -> None:
     await message.answer(
         (
             f"Привет, {html.bold(message.from_user.full_name)}!\n\n"
-            f"Это NanoBanana Bot — генерация изображений по тексту.\n\n"
-            f"Ваш баланс токенов: <b>{balance}</b>\n"
-            f"Команды: /help, /generate"
+            f"Добро пожаловать в NanoBanana Bot — генерируем изображения по вашему тексту.\n\n"
+            f"Ваш баланс токенов: <b>{balance}</b>\n\n"
+            f"Что дальше:\n"
+            f"• Сгенерировать изображение: отправьте /generate и ваш запрос.\n"
+            f"  Пример: /generate космический нано банан на фоне галактики\n"
+            f"• Профиль: /profile — ваши данные и баланс\n"
+            f"• Список команд: /help"
         )
     )
 
@@ -53,11 +57,15 @@ async def fallback(message: Message) -> None:
         await help(message)
 
 
+@router.message(Command("help"))
 async def help(message: Message) -> None:
     await message.answer(
         (
-            "Как использовать:\n"
-            "- /generate — создаёт изображение по текстовому запросу.\n"
-            "- Пример: /generate космический нано банан на фоне галактики.\n"
+            "Список команд:\n"
+            "- /start — приветствие и синхронизация баланса\n"
+            "- /profile — информация о пользователе и баланс\n"
+            "- /generate — создать изображение по текстовому запросу\n\n"
+            "Пример генерации:\n"
+            "/generate космический нано банан на фоне галактики"
         )
     )

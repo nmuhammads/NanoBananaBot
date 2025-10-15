@@ -15,6 +15,7 @@ from .middlewares.logging import SimpleLoggingMiddleware
 from .middlewares.rate_limit import RateLimitMiddleware
 from .handlers import start as start_handler
 from .handlers import generate as generate_handler
+from .handlers import profile as profile_handler
 
 
 # Initialize settings and core bot components
@@ -39,10 +40,12 @@ dp.message.middleware(RateLimitMiddleware(1.0))
 # Handlers setup
 start_handler.setup(db, cache)
 generate_handler.setup(client, db, cache)
+profile_handler.setup(db, cache)
 
 # Routers
 dp.include_router(start_handler.router)
 dp.include_router(generate_handler.router)
+dp.include_router(profile_handler.router)
 
 
 app = FastAPI(title="NanoBananaBot Webhook")
