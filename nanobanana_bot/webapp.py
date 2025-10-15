@@ -16,6 +16,13 @@ from .handlers import start as start_handler
 from .handlers import generate as generate_handler
 from .handlers import profile as profile_handler
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("nanobanana.app")
+
 
 # Initialize settings and core bot components
 settings = load_settings()
@@ -63,13 +70,14 @@ async def on_startup() -> None:
     try:
         await bot.delete_webhook(drop_pending_updates=True)
     except Exception as e:
-        logging.getLogger("nanobanana.middleware").warning("Failed to delete old webhook: %s", e)
+        logger.warning("Failed to delete old webhook: %s", e)
 
     await bot.set_webhook(
         url=url,
         secret_token=settings.webhook_secret_token,
         allowed_updates=["message", "callback_query"],
     )
+    logger.info("Webhook set: %s, allowed=%s", url, ["message", "callback_query"])
 
     # Register bot commands for user convenience
     try:
@@ -80,7 +88,9 @@ async def on_startup() -> None:
             BotCommand(command="help", description="Список команд"),
         ])
     except Exception as e:
-        logging.getLogger("nanobanana.middleware").warning("Failed to set bot commands: %s", e)
+        logger.warning("Failed to set bot commands: %s", e)
+    else:
+        logger.info("Bot commands registered")
 
 
 @app.on_event("shutdown")
@@ -104,10 +114,11 @@ async def telegram_webhook(
         raise HTTPException(status_code=403, detail="Invalid secret token")
 
     data = await request.json()
+    logger.debug("Incoming update JSON: %s", data)
     update = Update.model_validate(data)
     try:
         await dp.feed_update(bot, update)
     except Exception as e:
-        logging.getLogger("nanobanana.middleware").exception("Unhandled error while processing update: %s", e)
+        logger.exception("Unhandled error while processing update: %s", e)
         # Return ok to avoid Telegram retries storms; error is logged.
     return {"ok": True}

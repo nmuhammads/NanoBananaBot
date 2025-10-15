@@ -11,21 +11,20 @@ from aiogram.fsm.context import FSMContext
 
 from ..utils.nanobanana import NanoBananaClient
 from ..database import Database
-from ..cache import Cache
+import logging
 
 
 router = Router(name="generate")
 
 _client: NanoBananaClient | None = None
 _db: Database | None = None
-_cache: Cache | None = None
+_logger = logging.getLogger("nanobanana.generate")
 
 
-def setup(client: NanoBananaClient, database: Database, cache: Cache) -> None:
-    global _client, _db, _cache
+def setup(client: NanoBananaClient, database: Database) -> None:
+    global _client, _db
     _client = client
     _db = database
-    _cache = cache
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
@@ -82,12 +81,14 @@ def confirm_keyboard() -> InlineKeyboardMarkup:
 
 @router.message(Command("generate"))
 async def start_generate(message: Message, state: FSMContext) -> None:
-    assert _client is not None and _db is not None and _cache is not None
+    assert _client is not None and _db is not None
 
-    # Token check (1 токен на генерацию)
-    balance = await _cache.get_balance(message.from_user.id)
+    # Проверка токенов в Supabase (баланс хранится только там)
+    balance = await _db.get_token_balance(message.from_user.id)
+    _logger.info("/generate start user=%s balance=%s", message.from_user.id, balance)
     if balance <= 0:
         await message.answer("Недостаточно токенов. Пополните баланс или обратитесь в поддержку.")
+        _logger.warning("User %s has insufficient balance", message.from_user.id)
         return
 
     await state.clear()
@@ -106,6 +107,7 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     gen_type = data.split(":", 1)[1]
+    _logger.info("User %s chose type=%s", callback.from_user.id, gen_type)
     await state.update_data(gen_type=gen_type)
     await state.set_state(GenerateStates.waiting_prompt)
     await callback.message.edit_text(
@@ -119,7 +121,9 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     prompt = (message.text or "").strip()
     if not prompt:
         await message.answer("Пожалуйста, отправьте текстовый промпт.")
+        _logger.warning("User %s sent empty prompt", message.from_user.id)
         return
+    _logger.info("User %s provided prompt len=%s", message.from_user.id, len(prompt))
     await state.update_data(prompt=prompt)
 
     data = await state.get_data()
@@ -136,6 +140,7 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     elif gen_type == "text_multi":
         await state.set_state(GenerateStates.waiting_photo_count)
         await message.answer("Сколько фото использовать? Введите число от 1 до 10.")
+        _logger.info("User %s chose multi-photo mode", message.from_user.id)
         return
     else:
         await message.answer("Неизвестный тип генерации. Начните заново: /generate")
@@ -149,14 +154,17 @@ async def receive_photo_count(message: Message, state: FSMContext) -> None:
         count = int(text)
     except ValueError:
         await message.answer("Введите число от 1 до 10.")
+        _logger.warning("User %s provided invalid photo count: %s", message.from_user.id, text)
         return
     if count < 1 or count > 10:
         await message.answer("Число должно быть от 1 до 10.")
+        _logger.warning("User %s photo count out of range: %s", message.from_user.id, count)
         return
 
     await state.update_data(photos_needed=count, photos=[])
     await state.set_state(GenerateStates.waiting_photos)
     await message.answer(f"Загрузите {count} фото по очереди. Пришлите первое фото.")
+    _logger.info("User %s expects photos=%s", message.from_user.id, count)
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos), F.photo)
@@ -168,6 +176,7 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
 
     photos.append(photo_id)
     await state.update_data(photos=photos)
+    _logger.info("User %s sent photo %s/%s file_id=%s", message.from_user.id, len(photos), photos_needed, photo_id)
 
     if len(photos) < photos_needed:
         await message.answer(f"Фото {len(photos)} из {photos_needed} получено. Пришлите следующее фото.")
@@ -191,6 +200,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
         return
     ratio = data.split(":", 1)[1]
     await state.update_data(ratio=ratio)
+    _logger.info("User %s chose ratio=%s", callback.from_user.id, ratio)
 
     st = await state.get_data()
     gen_type = st.get("gen_type")
@@ -219,12 +229,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await callback.message.edit_text("Генерация отменена.")
         await callback.answer("Отменено")
+        _logger.info("User %s canceled generation", callback.from_user.id)
         return
     if choice != "confirm:ok":
         await callback.answer()
         return
 
-    assert _client is not None and _db is not None and _cache is not None
+    assert _client is not None and _db is not None
 
     st = await state.get_data()
     user_id = int(st.get("user_id"))
@@ -233,34 +244,40 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     ratio = st.get("ratio", "auto")
     photos = st.get("photos", [])
 
-    # Проверка токенов перед запуском
-    balance = await _cache.get_balance(user_id)
+    # Проверка токенов перед запуском (Supabase)
+    balance = await _db.get_token_balance(user_id)
     if balance <= 0:
         await callback.message.edit_text("Недостаточно токенов. Пополните баланс или обратитесь в поддержку.")
         await state.clear()
         await callback.answer()
+        _logger.warning("User %s insufficient balance at confirm", user_id)
         return
 
     # Трекинг генерации в Supabase
     payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}"
     generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]")
     gen_id = generation.get("id")
+    _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio, len(photos))
 
     try:
         # В текущей версии реализована генерация по тексту.
         # Режимы text_photo / text_multi будут подключены позже через API редактирования.
+        _logger.info("Calling NanoBanana API for user=%s gen_id=%s", user_id, gen_id)
         image_url = await _client.generate_image(prompt)
     except Exception as e:
         if gen_id is not None:
             await _db.mark_generation_failed(gen_id, str(e))
         await callback.message.edit_text(f"Ошибка генерации: {e}")
+        _logger.exception("Generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
         await state.clear()
         await callback.answer()
         return
 
-    # Списание токена и сохранение
-    new_balance = await _cache.increment_balance(user_id, -1)
+    # Списание токена и сохранение в Supabase
+    current_balance = await _db.get_token_balance(user_id)
+    new_balance = max(0, int(current_balance) - 1)
     await _db.set_token_balance(user_id, new_balance)
+    _logger.info("Debited 1 token: user=%s balance %s->%s", user_id, current_balance, new_balance)
 
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
@@ -273,4 +290,5 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     # Отправим изображение отдельным сообщением
     await callback.message.answer_photo(photo=image_url, caption=f"Результат генерации")
     await state.clear()
+    _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Запущено")

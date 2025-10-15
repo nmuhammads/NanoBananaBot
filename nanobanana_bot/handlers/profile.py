@@ -3,24 +3,21 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from ..database import Database
-from ..cache import Cache
 
 
 router = Router(name="profile")
 
 _db: Database | None = None
-_cache: Cache | None = None
 
 
-def setup(database: Database, cache: Cache) -> None:
-    global _db, _cache
+def setup(database: Database) -> None:
+    global _db
     _db = database
-    _cache = cache
 
 
 @router.message(Command("profile"))
 async def profile(message: Message) -> None:
-    assert _db is not None and _cache is not None
+    assert _db is not None
 
     user = await _db.get_or_create_user(
         user_id=message.from_user.id,
@@ -30,12 +27,8 @@ async def profile(message: Message) -> None:
         language_code=message.from_user.language_code,
     )
 
-    balance = await _cache.get_balance(message.from_user.id)
-    if balance == 0:
-        db_balance = await _db.get_token_balance(message.from_user.id)
-        if db_balance:
-            await _cache.set_balance(message.from_user.id, db_balance)
-            balance = db_balance
+    # Баланс хранится только в Supabase
+    balance = await _db.get_token_balance(message.from_user.id)
 
     username = user.get("username")
     first_name = user.get("first_name")
