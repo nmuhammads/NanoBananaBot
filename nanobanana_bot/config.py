@@ -1,5 +1,6 @@
 import os
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -13,6 +14,9 @@ class Settings:
     redis_url: str
     nanobanana_api_base: str
     nanobanana_api_key: Optional[str] = None
+    # Tribute payments
+    tribute_api_key: Optional[str] = None
+    tribute_product_map: dict[int, int] = field(default_factory=dict)  # tokens -> product_id
     request_timeout_seconds: int = 60
     # Webhook/Server settings
     webhook_url: Optional[str] = None
@@ -30,6 +34,18 @@ def load_settings() -> Settings:
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     nanobanana_api_base = os.getenv("NANOBANANA_API_BASE", "https://kie.ai/nano-banana")
     nanobanana_api_key = os.getenv("NANOBANANA_API_KEY")
+    # Tribute payments
+    tribute_api_key = os.getenv("TRIBUTE_API_KEY")
+    tribute_product_map_raw = os.getenv("TRIBUTE_PRODUCT_MAP", "{}")
+    try:
+        parsed = json.loads(tribute_product_map_raw)
+        # Normalize to int -> int mapping
+        tribute_product_map = {
+            int(k): int(v) for k, v in parsed.items()
+            if str(k).isdigit() and str(v).isdigit()
+        }
+    except Exception:
+        tribute_product_map = {}
     request_timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
     # Webhook
     webhook_url = os.getenv("WEBHOOK_URL")
@@ -48,6 +64,8 @@ def load_settings() -> Settings:
         redis_url=redis_url,
         nanobanana_api_base=nanobanana_api_base,
         nanobanana_api_key=nanobanana_api_key,
+        tribute_api_key=tribute_api_key,
+        tribute_product_map=tribute_product_map,
         request_timeout_seconds=request_timeout_seconds,
         webhook_url=webhook_url,
         webhook_path=webhook_path,

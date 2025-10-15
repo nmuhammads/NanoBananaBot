@@ -1,4 +1,7 @@
 import logging
+import hmac
+import hashlib
+import json
 from fastapi import FastAPI, Request, Header, HTTPException
 
 from aiogram import Bot, Dispatcher
@@ -49,7 +52,7 @@ dp.message.middleware(RateLimitMiddleware(1.0))
 start_handler.setup(db)
 generate_handler.setup(client, db)
 profile_handler.setup(db)
-topup_handler.setup(db)
+topup_handler.setup(db, settings)
 
 # Routers
 dp.include_router(start_handler.router)
@@ -216,6 +219,76 @@ async def nanobanana_callback(request: Request) -> dict:
             logger.info("Callback without user_id; image stored, no message sent")
     except Exception as e:
         logger.exception("Unhandled error in NanoBanana callback: %s", e)
+        return {"ok": False}
+
+    return {"ok": True}
+
+
+@app.post("/tribute/webhook")
+async def tribute_webhook(request: Request, trbt_signature: str | None = Header(default=None, alias="trbt-signature")) -> dict:
+    """
+    Tribute webhook for digital product purchases. Validates HMAC-SHA256 signature.
+    Credits tokens to the user's balance based on configured product mapping.
+    """
+    if not settings.tribute_api_key:
+        raise HTTPException(status_code=503, detail="Tribute integration not configured")
+
+    raw = await request.body()
+    calc = hmac.new(settings.tribute_api_key.encode("utf-8"), raw, hashlib.sha256).hexdigest()
+    if not trbt_signature or trbt_signature != calc:
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_name = (data.get("name") or data.get("event") or "").lower()
+    payload = data.get("payload") or {}
+
+    if event_name != "new_digital_product":
+        logger.info("Ignored Tribute event: %s", event_name)
+        return {"ok": True}
+
+    product_id = payload.get("product_id") or payload.get("productId")
+    tg_user_id = (
+        payload.get("telegram_user_id")
+        or payload.get("telegramUserId")
+        or (payload.get("user") or {}).get("telegram_id")
+        or (payload.get("user") or {}).get("telegramId")
+    )
+
+    if product_id is None or tg_user_id is None:
+        logger.warning("Tribute webhook missing product_id or telegram_user_id: %s", data)
+        return {"ok": False, "error": "missing fields"}
+
+    try:
+        product_id = int(product_id)
+        tg_user_id = int(tg_user_id)
+    except Exception:
+        logger.warning("Tribute webhook invalid ids: pid=%s, tg=%s", product_id, tg_user_id)
+        return {"ok": False, "error": "invalid ids"}
+
+    tokens_by_pid = {pid: tokens for tokens, pid in settings.tribute_product_map.items()}
+    tokens = tokens_by_pid.get(product_id)
+    if not tokens:
+        logger.warning("Unknown Tribute product_id=%s, no tokens credited", product_id)
+        return {"ok": True}
+
+    try:
+        current = await db.get_token_balance(tg_user_id)
+        new_balance = current + int(tokens)
+        await db.set_token_balance(tg_user_id, new_balance)
+
+        try:
+            res = db.client.table("users").select("language_code").eq("user_id", tg_user_id).limit(1).execute()
+            rows = getattr(res, "data", []) or []
+            lang = normalize_lang(rows[0].get("language_code") if rows else None)
+        except Exception:
+            lang = "ru"
+        await bot.send_message(chat_id=tg_user_id, text=t(lang, "topup.success", amount=int(tokens), balance=new_balance))
+    except Exception as e:
+        logger.exception("Failed to process Tribute webhook: %s", e)
         return {"ok": False}
 
     return {"ok": True}

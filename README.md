@@ -14,6 +14,7 @@ NanoBanana Bot — новый Telegram-бот для генерации изоб
    - `SUPABASE_URL`, `SUPABASE_KEY`
    - `REDIS_URL`
    - `NANOBANANA_API_BASE`, `NANOBANANA_API_KEY`
+   - `TRIBUTE_API_KEY`, `TRIBUTE_PRODUCT_MAP` (для оплаты через Tribute)
 3. Создайте и активируйте виртуальное окружение, установите зависимости:
    ```bash
    python -m venv .venv

@@ -11,6 +11,7 @@ from aiogram.types import (
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
+from ..config import Settings
 import logging
 
 
@@ -18,25 +19,23 @@ router = Router(name="topup")
 _logger = logging.getLogger("nanobanana.topup")
 
 _db: Database | None = None
+_settings: Settings | None = None
 
-
-def setup(database: Database) -> None:
-    global _db
+def setup(database: Database, settings: Settings | None = None) -> None:
+    global _db, _settings
     _db = database
+    if settings is not None:
+        _settings = settings
 
 
-def topup_keyboard() -> InlineKeyboardMarkup:
+def method_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="1 ✨", callback_data="topup:1")],
             [
-                InlineKeyboardButton(text="15 ✨", callback_data="topup:15"),
-                InlineKeyboardButton(text="30 ✨", callback_data="topup:30"),
-            ],
-            [
-                InlineKeyboardButton(text="50 ✨", callback_data="topup:50"),
-                InlineKeyboardButton(text="100 ✨", callback_data="topup:100"),
-            ],
+                InlineKeyboardButton(text=t(lang, "topup.method.sbp"), callback_data="topup_method:sbp"),
+                InlineKeyboardButton(text=t(lang, "topup.method.card"), callback_data="topup_method:card"),
+                InlineKeyboardButton(text=t(lang, "topup.method.old_stars"), callback_data="topup_method:invoice"),
+            ]
         ]
     )
 
@@ -51,15 +50,64 @@ async def topup(message: Message) -> None:
         (
             f"{t(lang, 'topup.title')}\n"
             f"{t(lang, 'topup.balance', balance=balance)}\n"
-            f"{t(lang, 'topup.choose')}"
+            f"{t(lang, 'topup.method.title')}"
         ),
-        reply_markup=topup_keyboard(),
+        reply_markup=method_keyboard(lang),
     )
 
 
 @router.message((F.text == t("ru", "kb.topup")) | (F.text == t("en", "kb.topup")))
 async def topup_text(message: Message) -> None:
     await topup(message)
+
+
+def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
+    # Tribute split: SBP (web link) or Card (mini-app link)
+    products = []
+    if _settings and _settings.tribute_product_map:
+        for tokens, pid in sorted(_settings.tribute_product_map.items()):
+            if method == "card":
+                url = f"https://t.me/tribute/app?startapp=p{pid}"
+            else:
+                url = f"https://web.tribute.tg/p/{pid}"
+            products.append([InlineKeyboardButton(text=f"{tokens} ✨", url=url)])
+    return InlineKeyboardMarkup(inline_keyboard=products or [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]])
+
+
+@router.callback_query(F.data.startswith("topup_method:"))
+async def choose_method(callback: CallbackQuery) -> None:
+    assert _db is not None
+    user = await _db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+    method = (callback.data or "").split(":", 1)[1]
+    if method == "invoice":
+        # Show amounts for Stars invoice (old method)
+        await callback.message.answer(t(lang, "topup.choose"), reply_markup=topup_keyboard())
+        await callback.answer("OK")
+        return
+    # Tribute: show packages with links (sbp or card)
+    kb = _packages_keyboard(lang, method)
+    await callback.message.answer(
+        f"{t(lang, 'topup.packages.title')}\n{t(lang, 'topup.link_hint')}",
+        reply_markup=kb,
+    )
+    await callback.answer("OK")
+
+
+def topup_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="1 ✨", callback_data="topup_invoice:1")],
+            [
+                InlineKeyboardButton(text="15 ✨", callback_data="topup_invoice:15"),
+                InlineKeyboardButton(text="30 ✨", callback_data="topup_invoice:30"),
+            ],
+            [
+                InlineKeyboardButton(text="50 ✨", callback_data="topup_invoice:50"),
+                InlineKeyboardButton(text="100 ✨", callback_data="topup_invoice:100"),
+            ],
+        ]
+    )
 
 
 async def _send_invoice(message: Message, amount: int) -> None:
@@ -78,8 +126,8 @@ async def _send_invoice(message: Message, amount: int) -> None:
     )
 
 
-@router.callback_query(F.data.startswith("topup:"))
-async def choose_topup(callback: CallbackQuery) -> None:
+@router.callback_query(F.data.startswith("topup_invoice:"))
+async def choose_invoice_topup(callback: CallbackQuery) -> None:
     data = callback.data or ""
     try:
         amount = int(data.split(":", 1)[1])
