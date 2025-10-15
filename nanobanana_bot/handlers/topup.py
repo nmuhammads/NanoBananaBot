@@ -42,8 +42,14 @@ def topup_keyboard() -> InlineKeyboardMarkup:
 
 @router.message(Command("topup"))
 async def topup(message: Message) -> None:
+    assert _db is not None
+    balance = await _db.get_token_balance(message.from_user.id)
     await message.answer(
-        "Пополнение токенов ✨\nВыберите сумму (1 ✨ = 1 токен):",
+        (
+            "Пополнение токенов ✨\n"
+            f"Ваш текущий баланс: <b>{balance}</b> ✨\n"
+            "Выберите сумму (1 ✨ = 1 токен):"
+        ),
         reply_markup=topup_keyboard(),
     )
 

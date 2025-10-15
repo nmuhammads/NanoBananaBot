@@ -79,6 +79,26 @@ def confirm_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def photo_count_keyboard(selected: int | None = None) -> InlineKeyboardMarkup:
+    """Инлайн‑клавиатура выбора количества фото: 1–5, 6–10, затем подтверждение.
+    Если число выбрано, рядом с ним показывается галочка.
+    """
+    rows: list[list[InlineKeyboardButton]] = []
+
+    def btn(n: int) -> InlineKeyboardButton:
+        mark = " ✅" if selected == n else ""
+        return InlineKeyboardButton(text=f"{n}{mark}", callback_data=f"pc:select:{n}")
+
+    # Первый ряд: 1–5
+    rows.append([btn(1), btn(2), btn(3), btn(4), btn(5)])
+    # Второй ряд: 6–10
+    rows.append([btn(6), btn(7), btn(8), btn(9), btn(10)])
+    # Третий ряд: подтверждение
+    rows.append([InlineKeyboardButton(text="Подтвердить ✅", callback_data="pc:confirm")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.message(Command("generate"))
 async def start_generate(message: Message, state: FSMContext) -> None:
     assert _client is not None and _db is not None
@@ -141,7 +161,15 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         return
     elif gen_type == "text_multi":
         await state.set_state(GenerateStates.waiting_photo_count)
-        await message.answer("📷 Сколько фото использовать? Введите число от 1 до 10.")
+        await state.update_data(selected_photo_count=None)
+        await message.answer(
+            (
+                "📷 <b>Выберите количество фото</b>\n\n"
+                "• 1–5 в первом ряду, 6–10 во втором\n"
+                "• Нажмите ‘Подтвердить ✅’ после выбора"
+            ),
+            reply_markup=photo_count_keyboard(None),
+        )
         _logger.info("User %s chose multi-photo mode", message.from_user.id)
         return
     else:
@@ -151,22 +179,51 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
 
 @router.message(StateFilter(GenerateStates.waiting_photo_count))
 async def receive_photo_count(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()
-    try:
-        count = int(text)
-    except ValueError:
-        await message.answer("Введите число от 1 до 10.")
-        _logger.warning("User %s provided invalid photo count: %s", message.from_user.id, text)
-        return
-    if count < 1 or count > 10:
-        await message.answer("Число должно быть от 1 до 10.")
-        _logger.warning("User %s photo count out of range: %s", message.from_user.id, count)
-        return
+    # Переход на инлайн‑кнопки: если пользователь ввёл число текстом,
+    # подскажем использовать кнопки.
+    st = await state.get_data()
+    selected = st.get("selected_photo_count")
+    await message.answer(
+        "Пожалуйста, выберите количество фото с помощью кнопок ниже.",
+        reply_markup=photo_count_keyboard(selected if isinstance(selected, int) else None),
+    )
+    _logger.info("User %s typed while waiting_photo_count; suggested inline buttons", message.from_user.id)
 
-    await state.update_data(photos_needed=count, photos=[])
-    await state.set_state(GenerateStates.waiting_photos)
-    await message.answer(f"Загрузите {count} фото по очереди. Пришлите первое фото.")
-    _logger.info("User %s expects photos=%s", message.from_user.id, count)
+
+@router.callback_query(StateFilter(GenerateStates.waiting_photo_count))
+async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> None:
+    data = callback.data or ""
+    if data.startswith("pc:select:"):
+        try:
+            count = int(data.split(":")[-1])
+        except ValueError:
+            await callback.answer()
+            return
+        if not (1 <= count <= 10):
+            await callback.answer()
+            return
+        await state.update_data(selected_photo_count=count)
+        await callback.message.edit_reply_markup(reply_markup=photo_count_keyboard(count))
+        await callback.answer(f"Выбрано: {count}")
+        _logger.info("User %s selected photo_count=%s", callback.from_user.id, count)
+        return
+    elif data == "pc:confirm":
+        st = await state.get_data()
+        count = st.get("selected_photo_count")
+        if not isinstance(count, int) or count < 1 or count > 10:
+            await callback.answer("Сначала выберите количество 1–10")
+            return
+        await state.update_data(photos_needed=count, photos=[])
+        await state.set_state(GenerateStates.waiting_photos)
+        await callback.message.edit_text(
+            f"✅ Выбрано: {count} фото.\n📸 Фото 1 из {count}: отправьте первое изображение."
+        )
+        await callback.answer("Готово")
+        _logger.info("User %s confirmed photo_count=%s", callback.from_user.id, count)
+        return
+    else:
+        await callback.answer()
+        return
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos), F.photo)
@@ -181,7 +238,10 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
     _logger.info("User %s sent photo %s/%s file_id=%s", message.from_user.id, len(photos), photos_needed, photo_id)
 
     if len(photos) < photos_needed:
-        await message.answer(f"Фото {len(photos)} из {photos_needed} получено. Пришлите следующее фото.")
+        idx = len(photos)
+        await message.answer(
+            f"✅ Фото {idx} из {photos_needed} получено.\n📸 Отправьте фото {idx + 1} из {photos_needed}."
+        )
         return
 
     # Все фото получены — переходим к выбору соотношения сторон
@@ -190,8 +250,12 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos))
-async def require_photo(message: Message) -> None:
-    await message.answer("📷 Пожалуйста, отправьте фото.")
+async def require_photo(message: Message, state: FSMContext) -> None:
+    st = await state.get_data()
+    photos = list(st.get("photos", []))
+    photos_needed = int(st.get("photos_needed", 1))
+    next_idx = min(len(photos) + 1, photos_needed)
+    await message.answer(f"📷 Пожалуйста, отправьте фото {next_idx} из {photos_needed}.")
 
 
 # Текстовый запуск генерации с нижней клавиатуры
@@ -216,17 +280,24 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     photos = st.get("photos", [])
     photos_needed = st.get("photos_needed")
 
-    summary_lines = [
-        "Проверьте данные перед генерацией:\n",
-        f"Тип: {gen_type}",
-        f"Промпт: {html.bold(prompt)}",
-        f"Соотношение сторон: {ratio}",
-    ]
+    type_map = {
+        "text": "Только текст 📝",
+        "text_photo": "Текст + фото 🖼️",
+        "text_multi": "Текст + несколько фото 📷",
+    }
+    gen_type_label = type_map.get(gen_type, str(gen_type))
+
+    summary = (
+        "🔍 <b>Проверьте данные перед генерацией</b>\n\n"
+        f"• Тип: {gen_type_label}\n"
+        f"• Промпт: {html.bold(prompt)}\n"
+        f"• Соотношение сторон: {ratio}\n"
+    )
     if gen_type in {"text_photo", "text_multi"}:
-        summary_lines.append(f"Фото: {len(photos)} из {photos_needed}")
+        summary += f"• Фото: {len(photos)} из {photos_needed}"
 
     await state.set_state(GenerateStates.confirming)
-    await callback.message.edit_text("\n".join(summary_lines), reply_markup=confirm_keyboard())
+    await callback.message.edit_text(summary, reply_markup=confirm_keyboard())
     await callback.answer()
 
 
