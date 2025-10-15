@@ -37,9 +37,9 @@ class GenerateStates(StatesGroup):
 
 def type_keyboard() -> InlineKeyboardMarkup:
     kb = [
-        [InlineKeyboardButton(text="По тексту", callback_data="gen_type:text")],
-        [InlineKeyboardButton(text="По текст + фото", callback_data="gen_type:text_photo")],
-        [InlineKeyboardButton(text="По текст + несколько фото", callback_data="gen_type:text_multi")],
+        [InlineKeyboardButton(text="Только текст 📝", callback_data="gen_type:text")],
+        [InlineKeyboardButton(text="Текст + фото 🖼️", callback_data="gen_type:text_photo")],
+        [InlineKeyboardButton(text="Текст + несколько фото 📷", callback_data="gen_type:text_multi")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -97,7 +97,7 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateStates.choosing_type)
     await state.update_data(user_id=message.from_user.id)
     await message.answer(
-        "Выберите способ генерации:",
+        "🪄 Выберите способ генерации:",
         reply_markup=type_keyboard(),
     )
 
@@ -113,7 +113,7 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(gen_type=gen_type)
     await state.set_state(GenerateStates.waiting_prompt)
     await callback.message.edit_text(
-        "Введите текстовый промпт для генерации:"
+        "📝 Введите текст для генерации:"
     )
     await callback.answer()
 
@@ -132,16 +132,16 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     gen_type = data.get("gen_type")
     if gen_type == "text":
         await state.set_state(GenerateStates.choosing_ratio)
-        await message.answer("Выберите соотношение сторон:", reply_markup=ratio_keyboard())
+        await message.answer("📐 Выберите соотношение сторон:", reply_markup=ratio_keyboard())
         return
     elif gen_type == "text_photo":
         await state.update_data(photos_needed=1, photos=[])
         await state.set_state(GenerateStates.waiting_photos)
-        await message.answer("Загрузите фото, которое будет использовано вместе с текстом.")
+        await message.answer("📷 Загрузите фото, которое будет использовано вместе с текстом.")
         return
     elif gen_type == "text_multi":
         await state.set_state(GenerateStates.waiting_photo_count)
-        await message.answer("Сколько фото использовать? Введите число от 1 до 10.")
+        await message.answer("📷 Сколько фото использовать? Введите число от 1 до 10.")
         _logger.info("User %s chose multi-photo mode", message.from_user.id)
         return
     else:
@@ -186,12 +186,18 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
 
     # Все фото получены — переходим к выбору соотношения сторон
     await state.set_state(GenerateStates.choosing_ratio)
-    await message.answer("Выберите соотношение сторон:", reply_markup=ratio_keyboard())
+    await message.answer("📐 Выберите соотношение сторон:", reply_markup=ratio_keyboard())
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos))
 async def require_photo(message: Message) -> None:
-    await message.answer("Пожалуйста, отправьте фото.")
+    await message.answer("📷 Пожалуйста, отправьте фото.")
+
+
+# Текстовый запуск генерации с нижней клавиатуры
+@router.message(F.text == "Сгенерировать 🖼️")
+async def start_generate_text(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state)
 
 
 @router.callback_query(StateFilter(GenerateStates.choosing_ratio))

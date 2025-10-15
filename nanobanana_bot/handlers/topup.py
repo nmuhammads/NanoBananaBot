@@ -10,9 +10,11 @@ from aiogram.types import (
 )
 
 from ..database import Database
+import logging
 
 
 router = Router(name="topup")
+_logger = logging.getLogger("nanobanana.topup")
 
 _db: Database | None = None
 
@@ -41,12 +43,12 @@ def topup_keyboard() -> InlineKeyboardMarkup:
 @router.message(Command("topup"))
 async def topup(message: Message) -> None:
     await message.answer(
-        "Выберите сумму пополнения токенов (1 ✨ = 1 токен):",
+        "Пополнение токенов ✨\nВыберите сумму (1 ✨ = 1 токен):",
         reply_markup=topup_keyboard(),
     )
 
 
-@router.message(F.text == "Пополнить баланс")
+@router.message((F.text == "Пополнить баланс") | (F.text == "Пополнить баланс ✨"))
 async def topup_text(message: Message) -> None:
     await topup(message)
 
@@ -61,6 +63,7 @@ async def _send_invoice(message: Message, amount: int) -> None:
         provider_token="",  # Stars для цифровых товаров — без провайдера
         currency="XTR",
         prices=prices,
+        start_parameter=f"topup_{amount}",
     )
 
 
@@ -73,8 +76,16 @@ async def choose_topup(callback: CallbackQuery) -> None:
         await callback.answer("Некорректная сумма", show_alert=True)
         return
 
-    await _send_invoice(callback.message, amount)
-    await callback.answer()
+    try:
+        await callback.message.answer(f"Оформляю счёт на {amount} ✨…")
+        await _send_invoice(callback.message, amount)
+        await callback.answer("Счёт отправлен")
+    except Exception as e:
+        _logger.exception("Failed to send Stars invoice: %s", e)
+        await callback.answer("Не удалось выставить счёт. Проверьте настройки Stars у бота.", show_alert=True)
+        await callback.message.answer(
+            "Оплата недоступна. Убедитесь, что включены Telegram Stars для бота (BotFather)."
+        )
 
 
 @router.pre_checkout_query()

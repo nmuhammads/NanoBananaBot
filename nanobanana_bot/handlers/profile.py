@@ -1,4 +1,4 @@
-from aiogram import Router, html
+from aiogram import Router, html, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
@@ -40,8 +40,8 @@ async def profile(message: Message) -> None:
 
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="/profile"), KeyboardButton(text="/generate")],
-            [KeyboardButton(text="Пополнить баланс")],
+            [KeyboardButton(text="Профиль 👤"), KeyboardButton(text="Пополнить баланс ✨")],
+            [KeyboardButton(text="Сгенерировать 🖼️")],
         ],
         resize_keyboard=True,
     )
@@ -58,3 +58,8 @@ async def profile(message: Message) -> None:
         ),
         reply_markup=keyboard,
     )
+
+
+@router.message(F.text == "Профиль 👤")
+async def profile_text(message: Message) -> None:
+    await profile(message)

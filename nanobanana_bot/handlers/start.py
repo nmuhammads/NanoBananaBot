@@ -30,8 +30,8 @@ async def start(message: Message) -> None:
 
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="/profile"), KeyboardButton(text="/generate")],
-            [KeyboardButton(text="Пополнить баланс")],
+            [KeyboardButton(text="Профиль 👤"), KeyboardButton(text="Сгенерировать 🖼️")],
+            [KeyboardButton(text="Пополнить баланс ✨")],
         ],
         resize_keyboard=True,
     )
