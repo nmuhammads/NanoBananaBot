@@ -15,6 +15,7 @@ from .middlewares.rate_limit import RateLimitMiddleware
 from .handlers import start as start_handler
 from .handlers import generate as generate_handler
 from .handlers import profile as profile_handler
+from .handlers import topup as topup_handler
 
 # Configure logging
 logging.basicConfig(
@@ -47,11 +48,13 @@ dp.message.middleware(RateLimitMiddleware(1.0))
 start_handler.setup(db)
 generate_handler.setup(client, db)
 profile_handler.setup(db)
+topup_handler.setup(db)
 
 # Routers
 dp.include_router(start_handler.router)
 dp.include_router(generate_handler.router)
 dp.include_router(profile_handler.router)
+dp.include_router(topup_handler.router)
 
 
 app = FastAPI(title="NanoBananaBot Webhook")
@@ -76,9 +79,9 @@ async def on_startup() -> None:
     await bot.set_webhook(
         url=url,
         secret_token=settings.webhook_secret_token,
-        allowed_updates=["message", "callback_query"],
+        allowed_updates=["message", "callback_query", "pre_checkout_query"],
     )
-    logger.info("Webhook set: %s, allowed=%s", url, ["message", "callback_query"])
+    logger.info("Webhook set: %s, allowed=%s", url, ["message", "callback_query", "pre_checkout_query"])
 
     # Register bot commands for user convenience
     try:
@@ -86,6 +89,7 @@ async def on_startup() -> None:
             BotCommand(command="start", description="Приветствие"),
             BotCommand(command="profile", description="Профиль и баланс"),
             BotCommand(command="generate", description="Генерация изображения"),
+            BotCommand(command="topup", description="Пополнить баланс токенов"),
             BotCommand(command="help", description="Список команд"),
         ])
     except Exception as e:

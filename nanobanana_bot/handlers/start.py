@@ -1,6 +1,6 @@
 from aiogram import Router, html
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 from ..database import Database
 
@@ -28,6 +28,14 @@ async def start(message: Message) -> None:
     # Баланс хранится только в Supabase
     balance = await _db.get_token_balance(message.from_user.id)
 
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="/profile"), KeyboardButton(text="/generate")],
+            [KeyboardButton(text="Пополнить баланс")],
+        ],
+        resize_keyboard=True,
+    )
+
     await message.answer(
         (
             f"Привет, {html.bold(message.from_user.full_name)}!\n\n"
@@ -38,7 +46,8 @@ async def start(message: Message) -> None:
             f"  Пример: /generate космический нано банан на фоне галактики\n"
             f"• Профиль: /profile — ваши данные и баланс\n"
             f"• Список команд: /help"
-        )
+        ),
+        reply_markup=keyboard,
     )
 
 

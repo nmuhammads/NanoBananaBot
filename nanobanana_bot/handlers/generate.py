@@ -86,9 +86,11 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     # Проверка токенов в Supabase (баланс хранится только там)
     balance = await _db.get_token_balance(message.from_user.id)
     _logger.info("/generate start user=%s balance=%s", message.from_user.id, balance)
-    if balance <= 0:
-        await message.answer("Недостаточно токенов. Пополните баланс или обратитесь в поддержку.")
-        _logger.warning("User %s has insufficient balance", message.from_user.id)
+    if balance < 4:
+        await message.answer(
+            f"Недостаточно токенов: требуется 4 токена за генерацию. Ваш баланс: {balance}.\nПополнить баланс: /topup"
+        )
+        _logger.warning("User %s has insufficient balance (need 4)", message.from_user.id)
         return
 
     await state.clear()
@@ -246,11 +248,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
-    if balance <= 0:
-        await callback.message.edit_text("Недостаточно токенов. Пополните баланс или обратитесь в поддержку.")
+    if balance < 4:
+        await callback.message.edit_text(
+            f"Недостаточно токенов: требуется 4 токена за генерацию. Ваш баланс: {balance}.\nПополнить баланс: /topup"
+        )
         await state.clear()
         await callback.answer()
-        _logger.warning("User %s insufficient balance at confirm", user_id)
+        _logger.warning("User %s insufficient balance at confirm (need 4)", user_id)
         return
 
     # Трекинг генерации в Supabase
@@ -298,11 +302,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         # Особый случай: провайдер принял задачу и пришлёт результат через callback
         if "awaiting callback" in msg:
             _logger.info("Async generation accepted: user=%s gen_id=%s", user_id, gen_id)
-            # Списание токена сразу после принятия задачи
+            # Списание 4 токенов сразу после принятия задачи
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 1)
+            new_balance = max(0, int(current_balance) - 4)
             await _db.set_token_balance(user_id, new_balance)
-            _logger.info("Debited 1 token (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            _logger.info("Debited 4 tokens (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
             await callback.message.edit_text(
                 "Задача отправлена в генерацию. Результат придёт в этом чате чуть позже."
             )
@@ -318,11 +322,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    # Списание токена и сохранение в Supabase (синхронный случай)
+    # Списание 4 токенов и сохранение в Supabase (синхронный случай)
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 1)
+    new_balance = max(0, int(current_balance) - 4)
     await _db.set_token_balance(user_id, new_balance)
-    _logger.info("Debited 1 token (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
+    _logger.info("Debited 4 tokens (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
 
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)

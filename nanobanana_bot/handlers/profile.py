@@ -1,6 +1,6 @@
 from aiogram import Router, html
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 from ..database import Database
 
@@ -38,6 +38,14 @@ async def profile(message: Message) -> None:
     full_name = (first_name or "") + (" " + last_name if last_name else "")
     full_name = full_name.strip() or message.from_user.full_name
 
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="/profile"), KeyboardButton(text="/generate")],
+            [KeyboardButton(text="Пополнить баланс")],
+        ],
+        resize_keyboard=True,
+    )
+
     await message.answer(
         (
             f"Профиль пользователя\n\n"
@@ -47,5 +55,6 @@ async def profile(message: Message) -> None:
             f"Язык: {language_code or '—'}\n\n"
             f"Баланс токенов: <b>{balance}</b>\n"
             f"Команды: /help"
-        )
+        ),
+        reply_markup=keyboard,
     )
