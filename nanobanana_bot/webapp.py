@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import Update
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
 from .cache import Cache
@@ -20,7 +21,7 @@ from .handlers import generate as generate_handler
 settings = load_settings()
 
 bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
 
 # Shared services
 cache = Cache(settings.redis_url)
@@ -57,6 +58,12 @@ async def on_startup() -> None:
     path = settings.webhook_path
     url = f"{base_url}{path}"
 
+    # Reset previous webhook to avoid conflicts and drop pending updates
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        logging.getLogger("nanobanana.middleware").warning("Failed to delete old webhook: %s", e)
+
     await bot.set_webhook(url=url, secret_token=settings.webhook_secret_token)
 
 
@@ -83,5 +90,9 @@ async def telegram_webhook(
 
     data = await request.json()
     update = Update.model_validate(data)
-    await dp.feed_update(bot, update)
+    try:
+        await dp.feed_update(bot, update)
+    except Exception as e:
+        logging.getLogger("nanobanana.middleware").exception("Unhandled error while processing update: %s", e)
+        # Return ok to avoid Telegram retries storms; error is logged.
     return {"ok": True}
