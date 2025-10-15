@@ -36,6 +36,7 @@ client = NanoBananaClient(
     base_url=settings.nanobanana_api_base,
     api_key=settings.nanobanana_api_key,
     timeout_seconds=settings.request_timeout_seconds,
+    callback_url=(settings.webhook_url.rstrip("/") + "/nb-callback") if settings.webhook_url else None,
 )
 
 # Middlewares
@@ -121,4 +122,57 @@ async def telegram_webhook(
     except Exception as e:
         logger.exception("Unhandled error while processing update: %s", e)
         # Return ok to avoid Telegram retries storms; error is logged.
+    return {"ok": True}
+
+
+@app.post("/nb-callback")
+async def nanobanana_callback(request: Request) -> dict:
+    """
+    Callback endpoint for NanoBanana API to deliver generated images.
+    Expected JSON may include keys like: imageUrl/image_url, generationId, userId, taskId.
+    """
+    data = await request.json()
+    logger.info("NanoBanana callback received: %s", {k: data.get(k) for k in ["imageUrl", "image_url", "generationId", "userId", "taskId"]})
+
+    image_url = data.get("imageUrl") or data.get("image_url") or (data.get("data") or {}).get("imageUrl")
+    generation_id = data.get("generationId") or (data.get("data") or {}).get("generationId")
+    user_id = data.get("userId") or (data.get("data") or {}).get("userId")
+
+    if not image_url:
+        logger.warning("NanoBanana callback missing image_url/imageUrl: %s", data)
+        return {"ok": False, "error": "missing image url"}
+
+    try:
+        # If we have generation_id, update Supabase and fetch user_id when needed
+        if generation_id is not None:
+            try:
+                await db.mark_generation_completed(int(generation_id), image_url)
+            except Exception as e:
+                logger.warning("Failed to mark generation completed id=%s: %s", generation_id, e)
+
+            # If user_id absent, try to fetch from generation record
+            if user_id is None:
+                try:
+                    # Lazy import to avoid circular
+                    from .database import Database  # already imported above
+                    # Use internal client to query
+                    gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
+                    rows = getattr(gen, "data", []) or []
+                    if rows:
+                        user_id = rows[0].get("user_id")
+                except Exception as e:
+                    logger.warning("Failed to fetch generation user_id id=%s: %s", generation_id, e)
+
+        # If we have user_id, send photo to the user chat
+        if user_id is not None:
+            try:
+                await bot.send_photo(chat_id=int(user_id), photo=image_url, caption="Результат генерации")
+            except Exception as e:
+                logger.warning("Failed to send photo to user %s: %s", user_id, e)
+        else:
+            logger.info("Callback without user_id; image stored, no message sent")
+    except Exception as e:
+        logger.exception("Unhandled error in NanoBanana callback: %s", e)
+        return {"ok": False}
+
     return {"ok": True}

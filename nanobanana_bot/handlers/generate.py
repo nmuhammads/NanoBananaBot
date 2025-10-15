@@ -259,12 +259,57 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     gen_id = generation.get("id")
     _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio, len(photos))
 
+    # Подготовка параметров KIE API
+    ratio_map = {
+        "1:1": "1:1",
+        "3:4": "3:4",
+        "4:3": "4:3",
+        "9:16": "9:16",
+        "16:9": "16:9",
+    }
+    image_size = ratio_map.get(ratio, "1:1")
+    # Выбор модели: если есть фото — edit, иначе text-only
+    model = "google/nano-banana-edit" if len(photos) > 0 else "google/nano-banana"
+
+    # Конвертация Telegram photo file_id → доступный URL (для edit-модели)
+    image_urls = []
+    if len(photos) > 0:
+        for pid in photos:
+            try:
+                f = await callback.message.bot.get_file(pid)
+                # Предупреждение: это публичный URL с токеном — используйте только если доверяете провайдеру
+                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
+                image_urls.append(file_url)
+            except Exception as e:
+                _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+
     try:
-        # В текущей версии реализована генерация по тексту.
-        # Режимы text_photo / text_multi будут подключены позже через API редактирования.
-        _logger.info("Calling NanoBanana API for user=%s gen_id=%s", user_id, gen_id)
-        image_url = await _client.generate_image(prompt)
+        _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        image_url = await _client.generate_image(
+            prompt=prompt,
+            model=model,
+            image_urls=image_urls or None,
+            image_size=image_size,
+            output_format="png",
+            meta={"generationId": gen_id, "userId": user_id},
+        )
     except Exception as e:
+        msg = str(e)
+        # Особый случай: провайдер принял задачу и пришлёт результат через callback
+        if "awaiting callback" in msg:
+            _logger.info("Async generation accepted: user=%s gen_id=%s", user_id, gen_id)
+            # Списание токена сразу после принятия задачи
+            current_balance = await _db.get_token_balance(user_id)
+            new_balance = max(0, int(current_balance) - 1)
+            await _db.set_token_balance(user_id, new_balance)
+            _logger.info("Debited 1 token (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            await callback.message.edit_text(
+                "Задача отправлена в генерацию. Результат придёт в этом чате чуть позже."
+            )
+            await state.clear()
+            await callback.answer("Запущено")
+            return
+
         if gen_id is not None:
             await _db.mark_generation_failed(gen_id, str(e))
         await callback.message.edit_text(f"Ошибка генерации: {e}")
@@ -273,11 +318,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    # Списание токена и сохранение в Supabase
+    # Списание токена и сохранение в Supabase (синхронный случай)
     current_balance = await _db.get_token_balance(user_id)
     new_balance = max(0, int(current_balance) - 1)
     await _db.set_token_balance(user_id, new_balance)
-    _logger.info("Debited 1 token: user=%s balance %s->%s", user_id, current_balance, new_balance)
+    _logger.info("Debited 1 token (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
 
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
