@@ -31,11 +31,9 @@ def setup(database: Database, settings: Settings | None = None) -> None:
 def method_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text=t(lang, "topup.method.sbp"), callback_data="topup_method:sbp"),
-                InlineKeyboardButton(text=t(lang, "topup.method.card"), callback_data="topup_method:card"),
-                InlineKeyboardButton(text=t(lang, "topup.method.old_stars"), callback_data="topup_method:invoice"),
-            ]
+            [InlineKeyboardButton(text=t(lang, "topup.method.sbp"), callback_data="topup_method:sbp")],
+            [InlineKeyboardButton(text=t(lang, "topup.method.card"), callback_data="topup_method:card")],
+            [InlineKeyboardButton(text=t(lang, "topup.method.old_stars"), callback_data="topup_method:invoice")],
         ]
     )
 
@@ -84,7 +82,7 @@ async def choose_method(callback: CallbackQuery) -> None:
     assert _db is not None
     user = await _db.get_user(callback.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
-    method = (callback.data or "").split(":", 1)[1]
+    method = (callback.data or "").split(":", 1)[1].strip().lower()
     if method == "invoice":
         # Show amounts for Stars invoice (old method)
         await callback.message.answer(t(lang, "topup.choose"), reply_markup=topup_keyboard())
