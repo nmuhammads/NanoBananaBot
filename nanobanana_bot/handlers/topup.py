@@ -13,6 +13,10 @@ from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..config import Settings
 import logging
+import asyncio
+import time
+import re
+import httpx
 
 
 router = Router(name="topup")
@@ -20,6 +24,7 @@ _logger = logging.getLogger("nanobanana.topup")
 
 _db: Database | None = None
 _settings: Settings | None = None
+_product_cache: dict[int, tuple[float, dict]] = {}
 
 def setup(database: Database, settings: Settings | None = None) -> None:
     global _db, _settings
@@ -59,21 +64,67 @@ async def topup_text(message: Message) -> None:
     await topup(message)
 
 
-def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
+async def _fetch_product(product_id: int) -> dict | None:
+    if not _settings or not _settings.tribute_api_key:
+        return None
+    # Simple TTL cache (5 minutes)
+    now = time.time()
+    cached = _product_cache.get(product_id)
+    if cached and (now - cached[0] < 300):
+        return cached[1]
+    try:
+        timeout = _settings.request_timeout_seconds if _settings else 30
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            res = await client.get(
+                f"https://tribute.tg/api/v1/products/{product_id}",
+                headers={
+                    "X-Api-Key": _settings.tribute_api_key,
+                    "Api-Key": _settings.tribute_api_key,
+                    "Accept": "application/json",
+                },
+            )
+            res.raise_for_status()
+            data = res.json()
+            _product_cache[product_id] = (now, data)
+            return data
+    except Exception:
+        _logger.warning("Failed to fetch Tribute product id=%s", product_id, exc_info=True)
+        return None
+
+
+async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
     # Tribute split: SBP (web link) or Card (mini-app link)
     products = []
     if _settings and _settings.tribute_product_map:
+        # Prepare fetch tasks per product, using numeric id when available
+        tasks: list[tuple[int, int]] = []  # (tokens, product_id)
         for tokens, pid in sorted(_settings.tribute_product_map.items()):
-            if method == "card":
-                slug = str(pid)
-                # Mini-app expects startapp to be product slug; prefix 'p' only if missing
-                if not slug.startswith("p"):
-                    slug = "p" + slug
-                url = f"https://t.me/tribute/app?startapp={slug}"
-            else:
-                # Web link uses /p/<slug> directly
-                url = f"https://web.tribute.tg/p/{pid}"
-            products.append([InlineKeyboardButton(text=f"{tokens} ✨", url=url)])
+            value = str(pid).strip()
+            parts = [p for p in re.split(r"[\|,:;/\s]+", value) if p]
+            # Prefer any numeric part as product id
+            numeric = next((p for p in parts if p.isdigit()), None)
+            if numeric:
+                try:
+                    tasks.append((int(tokens), int(numeric)))
+                except Exception:
+                    pass
+
+        # Fetch products concurrently
+        fetched: list[dict | None] = []
+        if tasks:
+            fetched = await asyncio.gather(*[_fetch_product(pid) for _, pid in tasks])
+
+        # Build buttons from fetched data following user's mapping:
+        # card → use webLink; sbp → use link
+        for i, item in enumerate(fetched):
+            tokens = tasks[i][0] if i < len(tasks) else None
+            if item and tokens is not None:
+                web_link = item.get("webLink")
+                link = item.get("link")
+                url = (web_link if method == "card" else link) or web_link or link
+                if url:
+                    products.append([InlineKeyboardButton(text=f"{tokens} ✨", url=url)])
+
     return InlineKeyboardMarkup(inline_keyboard=products or [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]])
 
 
@@ -93,7 +144,7 @@ async def choose_method(callback: CallbackQuery) -> None:
         await callback.answer("OK")
         return
     # Tribute: show packages with links (sbp or card)
-    kb = _packages_keyboard(lang, method)
+    kb = await _packages_keyboard(lang, method)
     await callback.message.answer(
         f"{t(lang, 'topup.packages.title')}\n{t(lang, 'topup.link_hint')}",
         reply_markup=kb,

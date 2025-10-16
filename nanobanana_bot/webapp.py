@@ -281,13 +281,35 @@ async def tribute_webhook(request: Request, trbt_signature: str | None = Header(
         logger.warning("Tribute webhook invalid telegram_user_id: tg=%s", tg_user_id)
         return {"ok": False, "error": "invalid ids"}
 
-    tokens_by_pid = {str(pid): tokens for tokens, pid in settings.tribute_product_map.items()}
-    # Accept both slug and 'p'+slug forms
-    tokens = tokens_by_pid.get(product_id) or (
-        tokens_by_pid.get(product_id[1:]) if product_id.startswith("p") else None
-    )
+    # Build mapping of acceptable product identifiers -> token amounts
+    # Each configured entry may be 'slug' or 'slug|numeric'. Accept slug, 'p'+slug and numeric id.
+    tokens_by_pid: dict[str, int] = {}
+    try:
+        import re
+        for tokens, raw in (settings.tribute_product_map or {}).items():
+            value = str(raw).strip()
+            parts = [p for p in re.split(r"[\|,:;/\s]+", value) if p]
+            if not parts:
+                continue
+            slug = parts[0]
+            # Add slug and 'p'+slug
+            tokens_by_pid[slug] = int(tokens)
+            if not slug.startswith("p"):
+                tokens_by_pid["p" + slug] = int(tokens)
+            # Add any numeric ids present
+            for p in parts[1:]:
+                if p.isdigit():
+                    tokens_by_pid[p] = int(tokens)
+    except Exception:
+        # Fallback to direct mapping if splitting fails
+        tokens_by_pid = {str(pid): int(tokens) for tokens, pid in settings.tribute_product_map.items()}
+
+    tokens = tokens_by_pid.get(product_id)
     if not tokens:
-        logger.warning("Unknown Tribute product_id=%s, no tokens credited", product_id)
+        try:
+            logger.warning("Unknown Tribute product_id=%s, known ids=%s", product_id, list(tokens_by_pid.keys()))
+        except Exception:
+            logger.warning("Unknown Tribute product_id=%s, no tokens credited", product_id)
         return {"ok": True}
 
     try:
