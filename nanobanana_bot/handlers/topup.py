@@ -83,6 +83,10 @@ async def choose_method(callback: CallbackQuery) -> None:
     user = await _db.get_user(callback.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
     method = (callback.data or "").split(":", 1)[1].strip().lower()
+    try:
+        _logger.info("topup_method selected: %s by user=%s", method, callback.from_user.id)
+    except Exception:
+        pass
     if method == "invoice":
         # Show amounts for Stars invoice (old method)
         await callback.message.answer(t(lang, "topup.choose"), reply_markup=topup_keyboard())
@@ -95,6 +99,14 @@ async def choose_method(callback: CallbackQuery) -> None:
         reply_markup=kb,
     )
     await callback.answer("OK")
+
+
+@router.callback_query(F.data == "noop")
+async def noop_callback(callback: CallbackQuery) -> None:
+    try:
+        await callback.answer("Оплата временно недоступна", show_alert=False)
+    except Exception:
+        pass
 
 
 def topup_keyboard() -> InlineKeyboardMarkup:

@@ -47,6 +47,8 @@ client = NanoBananaClient(
 # Middlewares
 dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.middleware")))
 dp.message.middleware(RateLimitMiddleware(1.0))
+dp.callback_query.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.middleware")))
+dp.callback_query.middleware(RateLimitMiddleware(1.0))
 
 # Handlers setup
 start_handler.setup(db)
