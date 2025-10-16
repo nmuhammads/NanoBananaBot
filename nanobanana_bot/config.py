@@ -51,7 +51,21 @@ def load_settings() -> Settings:
             if pid:
                 tribute_product_map[tokens] = pid
     except Exception:
+        # Fallback parser for non-JSON inputs like {"50":lJp}
         tribute_product_map = {}
+        try:
+            import re
+            # Find pairs like "50":lJp or 50:plJp (with optional quotes)
+            for m in re.finditer(r'"?(\d+)"?\s*:\s*"?([^"\s,}]+)"?', tribute_product_map_raw):
+                try:
+                    tokens = int(m.group(1))
+                except Exception:
+                    continue
+                pid = m.group(2).strip()
+                if pid:
+                    tribute_product_map[tokens] = pid
+        except Exception:
+            tribute_product_map = {}
     request_timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
     # Webhook
     webhook_url = os.getenv("WEBHOOK_URL")

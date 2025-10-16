@@ -102,6 +102,15 @@ async def on_startup() -> None:
     else:
         logger.info("Bot commands registered")
 
+    # Debug info: configured Tribute products
+    try:
+        if settings.tribute_product_map:
+            logger.info("Tribute products configured: %s", settings.tribute_product_map)
+        else:
+            logger.info("Tribute products configured: none")
+    except Exception:
+        logger.debug("Failed to log Tribute products config", exc_info=True)
+
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
