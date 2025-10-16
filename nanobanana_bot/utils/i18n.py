@@ -27,7 +27,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Привет, {name}! Добро пожаловать 👋\n\n"
             "✨ Возможности:\n"
             "• Генерация изображений по тексту\n"
-            "• Текст + фото, несколько фото\n\n"
+            "• Текст + фото, несколько фото\n"
+            "• Редактирование фото ✂️\n\n"
             "💳 Стоимость: <b>4 токена</b> за изображение\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
@@ -90,6 +91,13 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "topup.currency_mismatch": "Оплата не в валюте XTR, обращайтесь в поддержку.",
         "topup.success": "Успешная оплата: начислено {amount} токенов. Ваш новый баланс: {balance}.\nСпасибо!",
 
+        # Prices
+        "prices.title": "📋 Цены на токены",
+        "prices.rubles.header": "💳 Оплата рублями (СБП / карта):",
+        "prices.stars.header": "✨ Оплата звёздами:",
+        "prices.stars.line": "1 токен = 1 ✨ (без комиссии)",
+        "prices.disclaimer": "ℹ️ Платёжный сервис может брать комиссию; итоговая стоимость может немного отличаться. Оплата звёздами — без комиссии.",
+
         # Generate
         "gen.choose_method": "🪄 Выберите способ генерации:",
         "gen.type.text": "Только текст 📝",
@@ -134,7 +142,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Hello, {name}! Welcome 👋\n\n"
             "✨ Features:\n"
             "• Text-to-image generation\n"
-            "• Text + photo, multiple photos\n\n"
+            "• Text + photo, multiple photos\n"
+            "• Edit photo ✂️\n\n"
             "💳 Cost: <b>4 tokens</b> per image\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
@@ -196,6 +205,13 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "topup.payment_unavailable": "Payment unavailable. Ensure Telegram Stars enabled for the bot (BotFather).",
         "topup.currency_mismatch": "Payment is not in XTR currency, contact support.",
         "topup.success": "Payment successful: credited {amount} tokens. Your new balance: {balance}.\nThanks!",
+
+        # Prices
+        "prices.title": "📋 Token prices",
+        "prices.rubles.header": "💳 Pay in rubles (SBP / card):",
+        "prices.stars.header": "✨ Pay with Stars:",
+        "prices.stars.line": "1 token = 1 ✨ (no commission)",
+        "prices.disclaimer": "ℹ️ Payment service may charge a commission; final price may slightly differ. Stars payments are commission‑free.",
 
         # Generate
         "gen.choose_method": "🪄 Choose generation method:",

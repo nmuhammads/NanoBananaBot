@@ -12,6 +12,7 @@ from aiogram.types import (
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..config import Settings
+from ..utils.prices import RUBLE_PRICES, format_rubles
 import logging
 import asyncio
 import time
@@ -123,7 +124,9 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
                 link = item.get("link")
                 url = (web_link if method == "card" else link) or web_link or link
                 if url:
-                    products.append([InlineKeyboardButton(text=f"{tokens} ✨", url=url)])
+                    rub = RUBLE_PRICES.get(int(tokens))
+                    label = f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
+                    products.append([InlineKeyboardButton(text=label, url=url)])
 
     return InlineKeyboardMarkup(inline_keyboard=products or [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]])
 
