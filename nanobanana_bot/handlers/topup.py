@@ -13,6 +13,7 @@ from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..config import Settings
 from ..utils.prices import RUBLE_PRICES, format_rubles
+from ..utils.hub import make_hub_link, ALLOWED_AMOUNTS
 import logging
 import asyncio
 import time
@@ -26,6 +27,7 @@ _logger = logging.getLogger("nanobanana.topup")
 _db: Database | None = None
 _settings: Settings | None = None
 _product_cache: dict[int, tuple[float, dict]] = {}
+
 
 def setup(database: Database, settings: Settings | None = None) -> None:
     global _db, _settings
@@ -94,41 +96,37 @@ async def _fetch_product(product_id: int) -> dict | None:
 
 
 async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
-    # Tribute split: SBP (web link) or Card (mini-app link)
-    products = []
-    if _settings and _settings.tribute_product_map:
-        # Prepare fetch tasks per product, using numeric id when available
-        tasks: list[tuple[int, int]] = []  # (tokens, product_id)
-        for tokens, pid in sorted(_settings.tribute_product_map.items()):
-            value = str(pid).strip()
-            parts = [p for p in re.split(r"[\|,:;/\s]+", value) if p]
-            # Prefer any numeric part as product id
-            numeric = next((p for p in parts if p.isdigit()), None)
-            if numeric:
-                try:
-                    tasks.append((int(tokens), int(numeric)))
-                except Exception:
-                    pass
+    # Deep links to hub @aiverse_hub_bot for SBP/Card/Stars
+    def _norm(m: str) -> str:
+        m = (m or "").strip().lower()
+        if m in {"invoice", "stars", "xtr"}:  # treat invoice as stars
+            return "stars"
+        if m in {"sbp"}:
+            return "sbp"
+        if m in {"card"}:
+            return "card"
+        return m
 
-        # Fetch products concurrently
-        fetched: list[dict | None] = []
-        if tasks:
-            fetched = await asyncio.gather(*[_fetch_product(pid) for _, pid in tasks])
+    m = _norm(method)
+    rows: list[list[InlineKeyboardButton]] = []
+    for tokens in sorted(ALLOWED_AMOUNTS):
+        try:
+            url = make_hub_link(m, tokens)
+        except Exception:
+            # Skip unsupported amounts/methods silently
+            continue
+        if m in {"sbp", "card"}:
+            rub = RUBLE_PRICES.get(int(tokens))
+            label = (
+                f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
+            )
+        else:  # stars
+            label = f"{tokens} ✨"
+        rows.append([InlineKeyboardButton(text=label, url=url)])
 
-        # Build buttons from fetched data following user's mapping:
-        # card → use webLink; sbp → use link
-        for i, item in enumerate(fetched):
-            tokens = tasks[i][0] if i < len(tasks) else None
-            if item and tokens is not None:
-                web_link = item.get("webLink")
-                link = item.get("link")
-                url = (web_link if method == "card" else link) or web_link or link
-                if url:
-                    rub = RUBLE_PRICES.get(int(tokens))
-                    label = f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
-                    products.append([InlineKeyboardButton(text=label, url=url)])
-
-    return InlineKeyboardMarkup(inline_keyboard=products or [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]])
+    if not rows:
+        rows = [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data.startswith("topup_method:"))
@@ -141,12 +139,7 @@ async def choose_method(callback: CallbackQuery) -> None:
         _logger.info("topup_method selected: %s by user=%s", method, callback.from_user.id)
     except Exception:
         pass
-    if method == "invoice":
-        # Show amounts for Stars invoice (old method)
-        await callback.message.answer(t(lang, "topup.choose"), reply_markup=topup_keyboard())
-        await callback.answer("OK")
-        return
-    # Tribute: show packages with links (sbp or card)
+    # For all methods (sbp, card, invoice/stars) show deep-link packages
     kb = await _packages_keyboard(lang, method)
     await callback.message.answer(
         f"{t(lang, 'topup.packages.title')}\n{t(lang, 'topup.link_hint')}",

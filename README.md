@@ -84,3 +84,15 @@ uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port 8000
 
 ## Лицензия
 - Внутренний проект. Лицензирование по вашей политике.
+
+## Оплата через хаб @aiverse_hub_bot
+- Бот формирует инлайн URL‑кнопки, ведущие в хаб с `start`‑пейлоадами.
+- Методы: `stars` (Telegram Stars), `sbp` (СБП), `card` (карта).
+- Суммы: `50`, `120`, `300`, `800` — именно эти значения (совпадают с `TRIBUTE_PRODUCT_MAP`).
+- Примеры диплинков:
+  - Stars: `https://t.me/aiverse_hub_bot?start=pay-50`, `...pay-120`, `...pay-300`, `...pay-800`
+  - СБП: `https://t.me/aiverse_hub_bot?start=pay-sbp-50`, `...pay-sbp-120`, `...pay-sbp-300`, `...pay-sbp-800`
+  - Карта: `https://t.me/aiverse_hub_bot?start=pay-card-50`, `...pay-card-120`, `...pay-card-300`, `...pay-card-800`
+- Поведение:
+  - Stars — мгновенно открывается счёт (0 кликов в хабе).
+  - Tribute (СБП/карта) — сразу приходит одна кнопка продукта на выбранную сумму (1 клик).
