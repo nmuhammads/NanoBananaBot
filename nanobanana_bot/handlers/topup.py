@@ -12,7 +12,7 @@ from aiogram.types import (
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..config import Settings
-from ..utils.prices import RUBLE_PRICES, format_rubles
+from ..utils.prices import RUBLE_PRICES, USD_PRICES, format_rubles, format_usd
 from ..utils.hub import make_hub_link, ALLOWED_AMOUNTS
 import logging
 import asyncio
@@ -116,10 +116,17 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
             # Skip unsupported amounts/methods silently
             continue
         if m in {"sbp", "card"}:
-            rub = RUBLE_PRICES.get(int(tokens))
-            label = (
-                f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
-            )
+            # Localized price label: RU → rubles, EN → dollars
+            if lang.startswith("en"):
+                usd = USD_PRICES.get(int(tokens))
+                label = (
+                    f"{tokens} Token" if usd is None else f"{tokens} Token ~ ${format_usd(usd)}"
+                )
+            else:
+                rub = RUBLE_PRICES.get(int(tokens))
+                label = (
+                    f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
+                )
         else:  # stars
             label = f"{tokens} ✨"
         rows.append([InlineKeyboardButton(text=label, url=url)])
