@@ -95,6 +95,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Prices
         "prices.title": "📋 Цены на токены",
         "prices.rubles.header": "💳 Оплата рублями (СБП / карта):",
+        "prices.usd.header": "💳 Оплата в долларах (карта):",
         "prices.stars.header": "✨ Оплата звёздами:",
         "prices.stars.line": "1 токен = 1 ✨ (без комиссии)",
         "prices.disclaimer": "ℹ️ Платёжный сервис может брать комиссию; итоговая стоимость может немного отличаться. Оплата звёздами — без комиссии.",
@@ -211,6 +212,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Prices
         "prices.title": "📋 Token prices",
         "prices.rubles.header": "💳 Pay in rubles (SBP / card):",
+        "prices.usd.header": "💳 Pay in USD (card):",
         "prices.stars.header": "✨ Pay with Stars:",
         "prices.stars.line": "1 token = 1 ✨ (no commission)",
         "prices.disclaimer": "ℹ️ Payment service may charge a commission; final price may slightly differ. Stars payments are commission‑free.",
