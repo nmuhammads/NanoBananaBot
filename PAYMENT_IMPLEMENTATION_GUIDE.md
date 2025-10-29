@@ -64,12 +64,12 @@ def make_hub_link(method: str, amount: int) -> str:
     return f"https://t.me/{HUB_BOT_USERNAME}?start={payload}"
 ```
 
-**Шаг 3: Настройте отображение цен (опционально)**
+**Шаг 3: Настройте отображение цен (опционально, мультивалютно)**
 
--   Чтобы показывать пользователям примерную стоимость пакетов в рублях прямо на кнопках, вы можете создать файл `utils/prices.py`.
--   Этот файл будет содержать словарь, сопоставляющий количество токенов с их ценой в рублях.
+-   Чтобы подсказать пользователю ориентировочную стоимость пакетов прямо на кнопках, используйте файл `utils/prices.py`.
+-   Поддерживаются рубли для русской локали и доллары для английской локали.
 
--   **Пример `utils/prices.py`**:
+-   **Пример `utils/prices.py` (мультивалютно)**:
     ```python
     # Словарь: количество токенов -> цена в рублях
     RUBLE_PRICES: dict[int, int] = {
@@ -77,10 +77,27 @@ def make_hub_link(method: str, amount: int) -> str:
         120: 228,
         300: 540,
         800: 1440,
+        2000: 3400,
+        5000: 7500,
+    }
+
+    # Словарь: количество токенов -> цена в долларах США
+    USD_PRICES: dict[int, int] = {
+        50: 2,
+        120: 4,
+        300: 9,
+        800: 24,
+        2000: 55,
+        5000: 120,
     }
 
     def format_rubles(amount: int) -> str:
-        """Форматирует число в строку вида '1 440'."""
+        try:
+            return f"{amount:,}".replace(",", " ")
+        except Exception:
+            return str(amount)
+
+    def format_usd(amount: int) -> str:
         try:
             return f"{amount:,}".replace(",", " ")
         except Exception:
@@ -94,28 +111,35 @@ def make_hub_link(method: str, amount: int) -> str:
 
 ```python
 # Пример обработчика колбэка выбора метода
-# Импортируем данные о ценах
-from ..utils.prices import RUBLE_PRICES, format_rubles
+# Импортируем данные о ценах (мультивалютно)
+from ..utils.prices import RUBLE_PRICES, USD_PRICES, format_rubles, format_usd
+from ..utils.i18n import normalize_lang
 
 @router.callback_query(F.data.startswith("topup_method:"))
 async def choose_method_handler(callback: CallbackQuery):
     method = callback.data.split(":")[1]
+    # Определяем локаль пользователя (ru/en)
+    user = await db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
 
     # Создаем клавиатуру с диплинками
     buttons = []
     for amount in sorted(ALLOWED_AMOUNTS):
         url = make_hub_link(method, amount)
 
-        # Формируем текст для кнопки
-        # Если метод - СБП или карта, и цена есть в словаре, добавляем ее
+        # Формируем текст на кнопке с учетом локали и метода
         if method in ["sbp", "card"]:
-            rub_price = RUBLE_PRICES.get(amount)
-            label = (
-                f"{amount} Токенов"
-                if rub_price is None
-                else f"{amount} Токенов ~ {format_rubles(rub_price)} руб"
-            )
-        else: # для Stars просто показываем количество
+            if lang.startswith("en"):
+                usd_price = USD_PRICES.get(amount)
+                label = (
+                    f"{amount} Token" if usd_price is None else f"{amount} Token ~ ${format_usd(usd_price)}"
+                )
+            else:
+                rub_price = RUBLE_PRICES.get(amount)
+                label = (
+                    f"{amount} Токен" if rub_price is None else f"{amount} Токен ~ {format_rubles(rub_price)} руб"
+                )
+        else:  # для Stars просто показываем количество
             label = f"{amount} ✨"
 
         buttons.append([InlineKeyboardButton(text=label, url=url)])
