@@ -9,7 +9,7 @@ from aiogram.types import (
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-from ..utils.nanobanana import NanoBananaClient
+from ..utils.seedream import SeedreamClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
 import logging
@@ -17,15 +17,21 @@ import logging
 
 router = Router(name="generate")
 
-_client: NanoBananaClient | None = None
+_client: SeedreamClient | None = None
 _db: Database | None = None
-_logger = logging.getLogger("nanobanana.generate")
+_seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
+_seedream_model_edit: str = "bytedance/seedream-v4-edit"
+_logger = logging.getLogger("seedream.generate")
 
 
-def setup(client: NanoBananaClient, database: Database) -> None:
-    global _client, _db
+def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None) -> None:
+    global _client, _db, _seedream_model_t2i, _seedream_model_edit
     _client = client
     _db = database
+    if isinstance(seedream_model_t2i, str) and seedream_model_t2i.strip():
+        _seedream_model_t2i = seedream_model_t2i.strip()
+    if isinstance(seedream_model_edit, str) and seedream_model_edit.strip():
+        _seedream_model_edit = seedream_model_edit.strip()
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
@@ -396,17 +402,24 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio, len(photos))
 
     # Подготовка параметров KIE API
+    # Seedream image_size значения (перекодировка из выбора ratio)
     ratio_map = {
-        "1:1": "1:1",
-        "3:4": "3:4",
-        "4:3": "4:3",
-        "9:16": "9:16",
-        "16:9": "16:9",
+        "1:1": "square_hd",
+        "3:4": "portrait_4_3",
+        "4:3": "landscape_4_3",
+        "9:16": "portrait_16_9",
+        "16:9": "landscape_16_9",
+        "21:9": "landscape_21_9",
+        "3:2": "landscape_3_2",
+        "2:3": "portrait_3_2",
     }
     # Для auto не задаём image_size, чтобы провайдер сохранил исходное соотношение
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
-    # Выбор модели: если есть фото — edit, иначе text-only
-    model = "google/nano-banana-edit" if len(photos) > 0 else "google/nano-banana"
+    # Разрешение и количество изображений по умолчанию
+    image_resolution = "1K"
+    max_images = 1
+    # Выбор модели: Seedream V4 — для текстовой генерации и редактирования (из конфига)
+    model = _seedream_model_edit if len(photos) > 0 else _seedream_model_t2i
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели)
     image_urls = []
@@ -427,7 +440,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             model=model,
             image_urls=image_urls or None,
             image_size=image_size,
-            output_format="png",
+            image_resolution=image_resolution,
+            max_images=max_images,
             meta={"generationId": gen_id, "userId": user_id},
         )
     except Exception as e:

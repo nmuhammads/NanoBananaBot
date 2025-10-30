@@ -3,7 +3,7 @@ import logging
 from typing import Optional, List, Dict, Any
 
 
-class NanoBananaClient:
+class SeedreamClient:
     def __init__(
         self,
         base_url: str,
@@ -16,7 +16,7 @@ class NanoBananaClient:
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
         self.callback_url = callback_url
-        self._logger = logging.getLogger("nanobanana.api")
+        self._logger = logging.getLogger("seedream.api")
 
     async def generate_image(
         self,
@@ -24,13 +24,15 @@ class NanoBananaClient:
         model: Optional[str] = None,
         image_urls: Optional[List[str]] = None,
         image_size: Optional[str] = None,
-        output_format: Optional[str] = "png",
+        image_resolution: Optional[str] = None,
+        max_images: Optional[int] = None,
         meta: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
-        Calls NanoBanana API to generate an image.
+        Calls Seedream (KIE) API to create a generation task.
 
-        Returns: URL to the generated image.
+        Returns: URL to the generated image if synchronous; otherwise raises
+        RuntimeError with 'awaiting callback' when taskId is returned.
         """
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -39,17 +41,28 @@ class NanoBananaClient:
         # Build payload according to KIE API (createTask)
         # https://api.kie.ai/api/v1/jobs/createTask
         payload: Dict[str, Any] = {}
-        # Model: text-only uses 'google/nano-banana', edit uses 'google/nano-banana-edit'
-        payload["model"] = model or "google/nano-banana"
+        # Model is required; default stays empty unless provided by caller
+        payload["model"] = model or "bytedance/seedream-v4-text-to-image"
         if self.callback_url:
             payload["callBackUrl"] = self.callback_url
         input_obj: Dict[str, Any] = {"prompt": prompt}
-        if output_format:
-            input_obj["output_format"] = output_format
-        if image_size:
-            input_obj["image_size"] = image_size
-        if image_urls:
-            input_obj["image_urls"] = image_urls
+        # Seedream V4 (KIE) input mapping
+        is_seedream = isinstance(payload.get("model"), str) and "seedream" in str(payload.get("model")).lower()
+        if is_seedream:
+            if image_size:
+                input_obj["image_size"] = image_size
+            if image_resolution:
+                input_obj["image_resolution"] = image_resolution
+            if isinstance(max_images, int) and 1 <= max_images <= 6:
+                input_obj["max_images"] = max_images
+            if image_urls:
+                input_obj["filesUrl"] = image_urls
+        else:
+            # Fallback for non-Seedream models (kept for compatibility)
+            if image_size:
+                input_obj["image_size"] = image_size
+            if image_urls:
+                input_obj["image_urls"] = image_urls
         payload["input"] = input_obj
         if meta:
             payload["meta"] = meta
@@ -62,13 +75,13 @@ class NanoBananaClient:
             url = f"{self.base_url}/generate"
 
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
-        self._logger.info("Requesting NanoBanana generate: url=%s, payload_keys=%s", url, list(payload.keys()))
+        self._logger.info("Requesting Seedream generate: url=%s, payload_keys=%s", url, list(payload.keys()))
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, json=payload, headers=headers) as resp:
                     status = resp.status
                     text = await resp.text()
-                    self._logger.debug("NanoBanana response status=%s body=%s", status, text[:500])
+                    self._logger.debug("Seedream response status=%s body=%s", status, text[:500])
                     resp.raise_for_status()
                     try:
                         data = await resp.json()
@@ -87,25 +100,33 @@ class NanoBananaClient:
                         or data.get("imageUrl")
                         or (data.get("data") or {}).get("imageUrl")
                     )
+                    # Some KIE image APIs (incl. Seedream) may return an array of result URLs
+                    if not image_url:
+                        result_urls = (
+                            data.get("resultUrls")
+                            or (data.get("data") or {}).get("resultUrls")
+                        )
+                        if isinstance(result_urls, list) and result_urls:
+                            image_url = result_urls[0]
                     if image_url:
-                        self._logger.info("NanoBanana image_url received: %s", image_url)
+                        self._logger.info("Seedream image_url received: %s", image_url)
                         return image_url
 
                     task_id = data.get("taskId") or data.get("id") or data.get("data", {}).get("taskId")
                     if task_id:
-                        self._logger.info("NanoBanana task accepted, id=%s (await callback)", task_id)
+                        self._logger.info("Seedream task accepted, id=%s (await callback)", task_id)
                         # For async flow, we cannot return image_url immediately.
                         # Let the caller handle user messaging; raise a distinct error.
-                        raise RuntimeError("NanoBanana API accepted task; awaiting callback")
+                        raise RuntimeError("Seedream API accepted task; awaiting callback")
 
                     # No image_url and no task id — likely an error payload with 'msg'
-                    self._logger.error("NanoBanana API missing image_url and taskId in response: %s", data)
-                    raise RuntimeError("NanoBanana API did not return image_url")
+                    self._logger.error("Seedream API missing image_url and taskId in response: %s", data)
+                    raise RuntimeError("Seedream API did not return image_url")
         except aiohttp.ClientError as e:
-            self._logger.exception("HTTP client error during NanoBanana request: %s", e)
+            self._logger.exception("HTTP client error during Seedream request: %s", e)
             raise
         except Exception as e:
-            self._logger.exception("Unexpected error during NanoBanana request: %s", e)
+            self._logger.exception("Unexpected error during Seedream request: %s", e)
             raise
 
     async def get_record_info(self, task_id: str) -> Dict[str, Any]:

@@ -23,7 +23,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
         # Start
         "start.welcome": (
-            "🍌 <b>NanoBanana Bot</b>\n\n"
+        "✨ <b>Seedream Bot</b>\n\n"
             "Привет, {name}! Добро пожаловать 👋\n\n"
             "✨ Возможности:\n"
             "• Генерация изображений по тексту\n"
@@ -140,7 +140,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
         # Start
         "start.welcome": (
-            "🍌 <b>NanoBanana Bot</b>\n\n"
+        "✨ <b>Seedream Bot</b>\n\n"
             "Hello, {name}! Welcome 👋\n\n"
             "✨ Features:\n"
             "• Text-to-image generation\n"

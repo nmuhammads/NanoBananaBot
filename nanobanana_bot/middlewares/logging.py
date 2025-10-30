@@ -13,7 +13,7 @@ class SimpleLoggingMiddleware(BaseMiddleware):
         log_full_event: bool = False,
     ) -> None:
         super().__init__()
-        self.logger = logger or logging.getLogger("nanobanana.middleware")
+        self.logger = logger or logging.getLogger("seedream.middleware")
         self.truncate_len = int(truncate_len)
         self.log_full_event = bool(log_full_event)
 

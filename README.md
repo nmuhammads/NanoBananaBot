@@ -1,19 +1,21 @@
-# NanoBanana Bot
+# Seedream Bot
 
-NanoBanana Bot — новый Telegram-бот для генерации изображений нейросетью NanoBanana, созданный на основе архитектуры текущего проекта, но как отдельный независимый репозиторий/папка.
+Seedream Bot — Telegram-бот для генерации изображений через официальное KIE API (Seedream V4), созданный на основе архитектуры текущего проекта.
 
 - Стек: `Python 3.11`, `aiogram 3.22.0`, `aiohttp`, `redis`, `supabase`.
 - Общие сервисы: единая база пользователей в Supabase и общий кеш Redis для баланса токенов.
-- API: NanoBanana `https://kie.ai/nano-banana`.
+- API: KIE official base `https://api.kie.ai/api/v1` (jobs/createTask, jobs/recordInfo).
+ - Models (configurable via env): `SEEDREAM_MODEL_T2I`, `SEEDREAM_MODEL_EDIT`.
+   Defaults: `bytedance/seedream-v4-text-to-image`, `bytedance/seedream-v4-edit`.
 
 ## Быстрый старт
 
-1. Склонируйте или скопируйте папку `NanoBananaBot` в отдельный репозиторий.
+1. Склонируйте или скопируйте папку `SeedreamBot` в отдельный репозиторий (имя папки произвольное).
 2. Создайте файл `.env` по примеру `.env.example` и заполните значения:
    - `BOT_TOKEN`
    - `SUPABASE_URL`, `SUPABASE_KEY`
    - `REDIS_URL`
-   - `NANOBANANA_API_BASE`, `NANOBANANA_API_KEY`
+   - `SEEDREAM_API_BASE`, `SEEDREAM_API_KEY`
    - `TRIBUTE_API_KEY`, `TRIBUTE_PRODUCT_MAP` (для оплаты через Tribute)
 3. Создайте и активируйте виртуальное окружение, установите зависимости:
    ```bash
@@ -23,7 +25,7 @@ NanoBanana Bot — новый Telegram-бот для генерации изоб
    ```
 4. Запустите сервер локально (uvicorn):
    ```bash
-   uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port 8000
+   uvicorn seedream_bot.webapp:app --host 0.0.0.0 --port 8000
    ```
 
 ## Команды
@@ -33,7 +35,7 @@ NanoBanana Bot — новый Telegram-бот для генерации изоб
 
 ## Архитектура
 ```
-NanoBananaBot/
+SeedreamBot/
 ├── Procfile
 ├── README.md
 ├── requirements.txt
@@ -55,7 +57,7 @@ NanoBananaBot/
     │   └── rate_limit.py
     └── utils/
         ├── __init__.py
-        └── nanobanana.py
+        └── seedream.py
 ```
 
 ## Примечания по версиям
@@ -71,14 +73,14 @@ NanoBananaBot/
      - `WEBHOOK_SECRET_TOKEN` — необязательный секрет для валидации запросов Telegram.
   2. Procfile должен содержать:
      ```
-     web: uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port $PORT
+     web: uvicorn seedream_bot.webapp:app --host 0.0.0.0 --port $PORT
      ```
-  3. Убедитесь, что переменные окружения (`BOT_TOKEN`, Supabase, Redis, NanoBanana) заданы.
+  3. Убедитесь, что переменные окружения (`BOT_TOKEN`, Supabase, Redis, Seedream/KIE) заданы.
   4. После старта Railway веб-сервиса бот автоматически установит webhook на `WEBHOOK_URL + WEBHOOK_PATH`.
 
 ### Локальная проверка uvicorn
 ```bash
-uvicorn nanobanana_bot.webapp:app --host 0.0.0.0 --port 8000
+uvicorn seedream_bot.webapp:app --host 0.0.0.0 --port 8000
 ```
 Затем задайте временный публичный адрес (например, через ngrok) в `WEBHOOK_URL` и проверьте получение обновлений.
 

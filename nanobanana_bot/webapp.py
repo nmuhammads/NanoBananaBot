@@ -12,7 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
 from .database import Database
-from .utils.nanobanana import NanoBananaClient
+from .utils.seedream import SeedreamClient
 from .utils.i18n import t, normalize_lang
 from .middlewares.logging import SimpleLoggingMiddleware
 from .middlewares.rate_limit import RateLimitMiddleware
@@ -27,7 +27,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
-logger = logging.getLogger("nanobanana.app")
+logger = logging.getLogger("seedream.app")
 
 
 # Initialize settings and core bot components
@@ -38,22 +38,27 @@ dp = Dispatcher(storage=MemoryStorage())
 
 # Shared services
 db = Database(settings.supabase_url, settings.supabase_key)
-client = NanoBananaClient(
-    base_url=settings.nanobanana_api_base,
-    api_key=settings.nanobanana_api_key,
+client = SeedreamClient(
+    base_url=settings.seedream_api_base,
+    api_key=settings.seedream_api_key,
     timeout_seconds=settings.request_timeout_seconds,
-    callback_url=(settings.webhook_url.rstrip("/") + "/nb-callback") if settings.webhook_url else None,
+    callback_url=(settings.webhook_url.rstrip("/") + "/seedream-callback") if settings.webhook_url else None,
 )
 
 # Middlewares
-dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.middleware")))
+dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("seedream.middleware")))
 dp.message.middleware(RateLimitMiddleware(1.0))
-dp.callback_query.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.middleware")))
+dp.callback_query.middleware(SimpleLoggingMiddleware(logging.getLogger("seedream.middleware")))
 dp.callback_query.middleware(RateLimitMiddleware(1.0))
 
 # Handlers setup
 start_handler.setup(db)
-generate_handler.setup(client, db)
+generate_handler.setup(
+    client,
+    db,
+    settings.seedream_model_t2i,
+    settings.seedream_model_edit,
+)
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
 prices_handler.setup(db)
@@ -66,7 +71,7 @@ dp.include_router(topup_handler.router)
 dp.include_router(prices_handler.router)
 
 
-app = FastAPI(title="NanoBananaBot Webhook")
+app = FastAPI(title="Seedream Bot Webhook")
 
 
 @app.on_event("startup")
@@ -149,14 +154,14 @@ async def telegram_webhook(
     return {"ok": True}
 
 
-@app.post("/nb-callback")
-async def nanobanana_callback(request: Request) -> dict:
+@app.post("/seedream-callback")
+async def seedream_callback(request: Request) -> dict:
     """
-    Callback endpoint for NanoBanana API to deliver generated images.
+    Callback endpoint for Seedream (KIE) API to deliver generated images.
     Expected JSON may include keys like: imageUrl/image_url, generationId, userId, taskId.
     """
     data = await request.json()
-    logger.info("NanoBanana callback received: %s", {k: data.get(k) for k in ["imageUrl", "image_url", "generationId", "userId", "taskId"]})
+    logger.info("Seedream callback received: %s", {k: data.get(k) for k in ["imageUrl", "image_url", "generationId", "userId", "taskId"]})
 
     # KIE format: top-level {code,msg,data}, where data.resultJson is a JSON string with resultUrls[]
     # and data.param is a JSON string that contains meta.generationId/userId.
@@ -193,7 +198,7 @@ async def nanobanana_callback(request: Request) -> dict:
         logger.warning("General parsing error for KIE callback: %s", e)
 
     if not image_url:
-        logger.warning("NanoBanana callback missing image url after parsing: %s", data)
+        logger.warning("Seedream callback missing image url after parsing: %s", data)
         return {"ok": False, "error": "missing image url"}
 
     try:
@@ -233,7 +238,7 @@ async def nanobanana_callback(request: Request) -> dict:
         else:
             logger.info("Callback without user_id; image stored, no message sent")
     except Exception as e:
-        logger.exception("Unhandled error in NanoBanana callback: %s", e)
+        logger.exception("Unhandled error in Seedream callback: %s", e)
         return {"ok": False}
 
     return {"ok": True}

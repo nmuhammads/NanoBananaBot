@@ -22,7 +22,7 @@ import httpx
 
 
 router = Router(name="topup")
-_logger = logging.getLogger("nanobanana.topup")
+_logger = logging.getLogger("seedream.topup")
 
 _db: Database | None = None
 _settings: Settings | None = None
