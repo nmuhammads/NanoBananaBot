@@ -102,10 +102,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
         # Generate
         "gen.choose_method": "🪄 <b>Выберите режим</b>",
-        "gen.type.text": "• Текст → Изображение ✨",
-        "gen.type.text_photo": "• Текст + Фото ✨",
-        "gen.type.text_multi": "• Текст + Несколько фото ✨",
-        "gen.type.edit_photo": "• Редактировать фото ✂️",
+        "gen.type.text": "Текст (Только промпт) ✨",
+        "gen.type.text_photo": "Текст + Фото ✨",
+        "gen.type.text_multi": "Текст + Несколько фото ✨",
+        "gen.type.edit_photo": "Редактировать фото ✂️",
         "gen.enter_prompt": "📝 Опишите идею для изображения",
         # Short placeholders for input fields
         "ph.prompt": "Опишите идею…",
@@ -120,7 +120,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.photo_received": "✅ Фото {idx} из {total} получено.\n📸 Отправьте фото {next} из {total}.",
         "gen.require_photo": "📷 Пожалуйста, отправьте фото {next} из {total}.",
         "gen.choose_ratio": (
-            "📐 <b>Seedream: ориентация и соотношение</b>\n\n"
+            "📐 <b>Ориентация и соотношение</b>\n\n"
             "◻️ Квадрат: 1:1\n"
             "📱 Портрет: 3:4, 2:3, 9:16\n"
             "🖼️ Альбом: 4:3, 3:2, 16:9, 21:9"
@@ -227,7 +227,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
         # Generate
         "gen.choose_method": "🪄 <b>Choose a mode</b>",
-        "gen.type.text": "Text → Image ✨",
+        "gen.type.text": "Text (Prompt only) ✨",
         "gen.type.text_photo": "Text + Photo ✨",
         "gen.type.text_multi": "Text + Multiple Photos ✨",
         "gen.type.edit_photo": "Edit Photo ✂️",
@@ -260,9 +260,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirm.cancel": "❌ Cancel",
         "gen.canceled": "Generation cancelled.",
         "gen.not_enough_tokens": "Needs 4 tokens. Your balance: {balance}.\nTop up: /topup",
-        "gen.done_text": "✨ Seedream done! Balance left: {balance}\nAspect ratio: {ratio}",
-        "gen.result_caption": "Seedream result ✨",
-        "gen.task_accepted": "Task sent to Seedream. The result will arrive here shortly.",
+        "gen.done_text": "✨ Done! Balance left: {balance}\nAspect ratio: {ratio}",
+        "gen.result_caption": "Result ✨",
+        "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
         "gen.unknown_type": "Unknown generation type. Start over: /generate",
     },
 }
