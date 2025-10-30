@@ -192,12 +192,7 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     if not prompt:
         st = await state.get_data()
         lang = st.get("lang")
-        gen_type = st.get("gen_type")
-        placeholder_key = "ph.edit_prompt" if gen_type == "edit_photo" else "ph.prompt"
-        await message.answer(
-            t(lang, "gen.prompt_empty"),
-            reply_markup=ForceReply(input_field_placeholder=t(lang, placeholder_key), selective=False),
-        )
+        await message.answer(t(lang, "gen.prompt_empty"))
         _logger.warning("User %s sent empty prompt", message.from_user.id)
         return
     _logger.info("User %s provided prompt len=%s", message.from_user.id, len(prompt))
