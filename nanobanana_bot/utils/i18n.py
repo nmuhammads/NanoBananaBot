@@ -116,7 +116,12 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirmed_count": "✅ Выбрано: {count} фото.\n📸 Фото 1 из {count}: отправьте первое изображение.",
         "gen.photo_received": "✅ Фото {idx} из {total} получено.\n📸 Отправьте фото {next} из {total}.",
         "gen.require_photo": "📷 Пожалуйста, отправьте фото {next} из {total}.",
-        "gen.choose_ratio": "📐 Выберите соотношение сторон:",
+        "gen.choose_ratio": (
+            "📐 <b>Выберите ориентацию и соотношение</b>\n\n"
+            "◻️ Квадрат: 1:1\n"
+            "📱 Портрет: 3:4, 2:3, 9:16\n"
+            "🖼️ Альбом: 4:3, 3:2, 16:9, 21:9"
+        ),
         "gen.ratio.auto": "Auto (как у исходного фото)",
         "gen.summary.title": "🔍 <b>Проверьте данные перед генерацией</b>",
         "gen.summary.type": "• Тип: {type}",
@@ -233,7 +238,12 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirmed_count": "✅ Selected: {count} photos.\n📸 Photo 1 of {count}: send the first image.",
         "gen.photo_received": "✅ Photo {idx} of {total} received.\n📸 Send photo {next} of {total}.",
         "gen.require_photo": "📷 Please send photo {next} of {total}.",
-        "gen.choose_ratio": "📐 Choose aspect ratio:",
+        "gen.choose_ratio": (
+            "📐 <b>Choose orientation and aspect ratio</b>\n\n"
+            "◻️ Square: 1:1\n"
+            "📱 Portrait: 3:4, 2:3, 9:16\n"
+            "🖼️ Landscape: 4:3, 3:2, 16:9, 21:9"
+        ),
         "gen.ratio.auto": "Auto (same as source photo)",
         "gen.summary.title": "🔍 <b>Review details before generation</b>",
         "gen.summary.type": "• Type: {type}",

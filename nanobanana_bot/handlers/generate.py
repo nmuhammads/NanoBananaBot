@@ -53,8 +53,8 @@ def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
 
 
 def ratio_keyboard() -> InlineKeyboardMarkup:
+    # Supported aspect ratios (auto removed; unsupported 5:4 and 4:5 removed)
     labels = [
-        "auto",
         "1:1",
         "9:16",
         "16:9",
@@ -62,8 +62,6 @@ def ratio_keyboard() -> InlineKeyboardMarkup:
         "4:3",
         "3:2",
         "2:3",
-        "5:4",
-        "4:5",
         "21:9",
     ]
     rows = []
@@ -416,7 +414,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     # Для auto не задаём image_size, чтобы провайдер сохранил исходное соотношение
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
     # Разрешение и количество изображений по умолчанию
-    image_resolution = "1K"
+    image_resolution = "2K"
     max_images = 1
     # Выбор модели: Seedream V4 — для текстовой генерации и редактирования (из конфига)
     model = _seedream_model_edit if len(photos) > 0 else _seedream_model_t2i

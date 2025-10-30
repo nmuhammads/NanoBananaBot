@@ -55,8 +55,9 @@ class SeedreamClient:
                 input_obj["image_resolution"] = image_resolution
             if isinstance(max_images, int) and 1 <= max_images <= 6:
                 input_obj["max_images"] = max_images
+            # KIE API expects 'image_urls' for edit flows when a reference image is provided
             if image_urls:
-                input_obj["filesUrl"] = image_urls
+                input_obj["image_urls"] = image_urls
         else:
             # Fallback for non-Seedream models (kept for compatibility)
             if image_size:
