@@ -6,6 +6,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     CallbackQuery,
 )
+from aiogram.types.input_file import URLInputFile
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
@@ -482,7 +483,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         t(lang, "gen.done_text", balance=new_balance, ratio=ratio)
     )
     # Отправим изображение отдельным сообщением
-    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"))
+    await callback.message.answer_document(document=URLInputFile(image_url), caption=t(lang, "gen.result_caption"))
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")

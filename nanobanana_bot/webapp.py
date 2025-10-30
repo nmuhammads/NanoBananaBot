@@ -8,6 +8,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import Update, BotCommand
+from aiogram.types.input_file import URLInputFile
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
@@ -232,9 +233,9 @@ async def seedream_callback(request: Request) -> dict:
                     lang = normalize_lang(rows[0].get("language_code") if rows else None)
                 except Exception:
                     lang = "ru"
-                await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=t(lang, "gen.result_caption"))
+                await bot.send_document(chat_id=int(user_id), document=URLInputFile(image_url), caption=t(lang, "gen.result_caption"))
             except Exception as e:
-                logger.warning("Failed to send photo to user %s: %s", user_id, e)
+                logger.warning("Failed to send document to user %s: %s", user_id, e)
         else:
             logger.info("Callback without user_id; image stored, no message sent")
     except Exception as e:
