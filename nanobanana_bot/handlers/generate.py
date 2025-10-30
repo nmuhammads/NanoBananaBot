@@ -7,6 +7,8 @@ from aiogram.types import (
     CallbackQuery,
 )
 from aiogram.types.input_file import URLInputFile
+from urllib.parse import urlparse, parse_qs, unquote
+from pathlib import PurePosixPath
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
@@ -23,6 +25,30 @@ _db: Database | None = None
 _seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
 _seedream_model_edit: str = "bytedance/seedream-v4-edit"
 _logger = logging.getLogger("seedream.generate")
+
+
+def _guess_filename(url: str) -> str:
+    """Определяет имя файла из URL. Если расширение отсутствует — вернёт seedream.png."""
+    try:
+        p = urlparse(url)
+        # Попробуем взять из query параметр filename
+        qs = parse_qs(p.query or "")
+        fn = unquote((qs.get("filename") or [""])[0])
+        if fn:
+            name = fn.strip().split("/")[-1]
+            if "." in name:
+                ext = name.rsplit(".", 1)[-1].lower()
+                if ext in {"png", "jpg", "jpeg", "webp"}:
+                    return name
+        # Иначе — из пути
+        name = PurePosixPath(p.path or "").name
+        if name and "." in name:
+            ext = name.rsplit(".", 1)[-1].lower()
+            if ext in {"png", "jpg", "jpeg", "webp"}:
+                return name
+    except Exception:
+        pass
+    return "seedream.png"
 
 
 def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None) -> None:
@@ -483,7 +509,10 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         t(lang, "gen.done_text", balance=new_balance, ratio=ratio)
     )
     # Отправим изображение отдельным сообщением
-    await callback.message.answer_document(document=URLInputFile(image_url), caption=t(lang, "gen.result_caption"))
+    await callback.message.answer_document(
+        document=URLInputFile(image_url, filename=_guess_filename(image_url)),
+        caption=t(lang, "gen.result_caption"),
+    )
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")

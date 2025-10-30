@@ -10,6 +10,8 @@ from aiogram.enums import ParseMode
 from aiogram.types import Update, BotCommand
 from aiogram.types.input_file import URLInputFile
 from aiogram.fsm.storage.memory import MemoryStorage
+from urllib.parse import urlparse, parse_qs, unquote
+from pathlib import PurePosixPath
 
 from .config import load_settings
 from .database import Database
@@ -73,6 +75,30 @@ dp.include_router(prices_handler.router)
 
 
 app = FastAPI(title="Seedream Bot Webhook")
+
+
+def _guess_filename(url: str) -> str:
+    """Определяет имя файла из URL. Если расширение отсутствует — вернёт seedream.png."""
+    try:
+        p = urlparse(url)
+        # Попробуем взять из query параметр filename
+        qs = parse_qs(p.query or "")
+        fn = unquote((qs.get("filename") or [""])[0])
+        if fn:
+            name = fn.strip().split("/")[-1]
+            if "." in name:
+                ext = name.rsplit(".", 1)[-1].lower()
+                if ext in {"png", "jpg", "jpeg", "webp"}:
+                    return name
+        # Иначе — из пути
+        name = PurePosixPath(p.path or "").name
+        if name and "." in name:
+            ext = name.rsplit(".", 1)[-1].lower()
+            if ext in {"png", "jpg", "jpeg", "webp"}:
+                return name
+    except Exception:
+        pass
+    return "seedream.png"
 
 
 @app.on_event("startup")
@@ -233,7 +259,11 @@ async def seedream_callback(request: Request) -> dict:
                     lang = normalize_lang(rows[0].get("language_code") if rows else None)
                 except Exception:
                     lang = "ru"
-                await bot.send_document(chat_id=int(user_id), document=URLInputFile(image_url), caption=t(lang, "gen.result_caption"))
+                await bot.send_document(
+                    chat_id=int(user_id),
+                    document=URLInputFile(image_url, filename=_guess_filename(image_url)),
+                    caption=t(lang, "gen.result_caption"),
+                )
             except Exception as e:
                 logger.warning("Failed to send document to user %s: %s", user_id, e)
         else:
