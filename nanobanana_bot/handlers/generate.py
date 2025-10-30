@@ -5,6 +5,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     CallbackQuery,
+    ForceReply,
 )
 from aiogram.types.input_file import URLInputFile
 from urllib.parse import urlparse, parse_qs, unquote
@@ -81,20 +82,21 @@ def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
 
 def ratio_keyboard() -> InlineKeyboardMarkup:
     # Supported aspect ratios (auto removed; unsupported 5:4 and 4:5 removed)
-    labels = [
-        "1:1",
-        "9:16",
-        "16:9",
-        "3:4",
-        "4:3",
-        "3:2",
-        "2:3",
-        "21:9",
+    # Display texts include orientation emojis; callback_data stays pure ratio value
+    items: list[tuple[str, str]] = [
+        ("1:1", "◻️ 1:1"),
+        ("9:16", "📱 9:16"),
+        ("16:9", "🖼️ 16:9"),
+        ("3:4", "📱 3:4"),
+        ("4:3", "🖼️ 4:3"),
+        ("3:2", "🖼️ 3:2"),
+        ("2:3", "📱 2:3"),
+        ("21:9", "🖼️ 21:9"),
     ]
-    rows = []
+    rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
-    for i, label in enumerate(labels):
-        row.append(InlineKeyboardButton(text=label, callback_data=f"ratio:{label}"))
+    for i, (value, display) in enumerate(items):
+        row.append(InlineKeyboardButton(text=display, callback_data=f"ratio:{value}"))
         if (i + 1) % 3 == 0:
             rows.append(row)
             row = []
@@ -177,7 +179,10 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
         return
     # Остальные режимы: сначала просим промпт
     await state.set_state(GenerateStates.waiting_prompt)
-    await callback.message.edit_text(t(lang, "gen.enter_prompt"))
+    await callback.message.answer(
+        t(lang, "gen.enter_prompt"),
+        reply_markup=ForceReply(input_field_placeholder=t(lang, "ph.prompt"), selective=False),
+    )
     await callback.answer()
 
 
@@ -187,7 +192,12 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     if not prompt:
         st = await state.get_data()
         lang = st.get("lang")
-        await message.answer(t(lang, "gen.prompt_empty"))
+        gen_type = st.get("gen_type")
+        placeholder_key = "ph.edit_prompt" if gen_type == "edit_photo" else "ph.prompt"
+        await message.answer(
+            t(lang, "gen.prompt_empty"),
+            reply_markup=ForceReply(input_field_placeholder=t(lang, placeholder_key), selective=False),
+        )
         _logger.warning("User %s sent empty prompt", message.from_user.id)
         return
     _logger.info("User %s provided prompt len=%s", message.from_user.id, len(prompt))
@@ -324,7 +334,10 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
     if gen_type == "edit_photo":
         # В режиме редактирования после фото просим промпт
         await state.set_state(GenerateStates.waiting_prompt)
-        await message.answer(t(lang, "gen.edit.enter_prompt"))
+        await message.answer(
+            t(lang, "gen.edit.enter_prompt"),
+            reply_markup=ForceReply(input_field_placeholder=t(lang, "ph.edit_prompt"), selective=False),
+        )
         return
     # Обычные режимы — выбор соотношения сторон
     await state.set_state(GenerateStates.choosing_ratio)
