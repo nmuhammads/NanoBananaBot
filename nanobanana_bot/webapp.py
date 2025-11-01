@@ -24,6 +24,7 @@ from .handlers import generate as generate_handler
 from .handlers import profile as profile_handler
 from .handlers import topup as topup_handler
 from .handlers import prices as prices_handler
+from .handlers import avatars as avatars_handler
 
 # Configure logging
 logging.basicConfig(
@@ -65,6 +66,7 @@ generate_handler.setup(
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
 prices_handler.setup(db)
+avatars_handler.setup(db)
 
 # Routers
 dp.include_router(start_handler.router)
@@ -72,6 +74,7 @@ dp.include_router(generate_handler.router)
 dp.include_router(profile_handler.router)
 dp.include_router(topup_handler.router)
 dp.include_router(prices_handler.router)
+dp.include_router(avatars_handler.router)
 
 
 app = FastAPI(title="Seedream Bot Webhook")
@@ -130,6 +133,7 @@ async def on_startup() -> None:
             BotCommand(command="start", description="Приветствие"),
             BotCommand(command="profile", description="Профиль и баланс"),
             BotCommand(command="generate", description="Генерация изображения"),
+            BotCommand(command="avatars", description="Мои аватары"),
             BotCommand(command="topup", description="Пополнить баланс токенов"),
             BotCommand(command="prices", description="Цены на токены"),
             BotCommand(command="lang", description="Выбрать язык"),

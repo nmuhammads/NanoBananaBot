@@ -42,7 +42,7 @@ async def profile(message: Message) -> None:
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "kb.topup"))],
-            [KeyboardButton(text=t(lang, "kb.generate"))],
+            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.avatars"))],
         ],
         resize_keyboard=True,
     )

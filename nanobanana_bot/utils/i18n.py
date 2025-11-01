@@ -20,6 +20,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.profile": "Профиль 👤",
         "kb.topup": "Пополнить баланс ✨",
         "kb.generate": "Сгенерировать 🖼️",
+        "kb.avatars": "Мои аватары 📸",
 
         # Start
         "start.welcome": (
@@ -43,6 +44,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "- /start — приветствие и синхронизация баланса\n"
             "- /profile — информация о пользователе и баланс\n"
             "- /generate — создать изображение по текстовому запросу\n"
+            "- /avatars — управление аватарами\n"
             "- /topup — пополнить баланс токенов\n"
             "- /prices — цены на токены\n"
             "- /lang — выбрать язык интерфейса\n\n"
@@ -139,12 +141,31 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.result_caption": "Результат ✨",
         "gen.task_accepted": "Задача отправлена. Результат скоро будет здесь ✨",
         "gen.unknown_type": "Неизвестный тип генерации. Начните заново: /generate",
+        
+        # Avatars
+        "avatars.title": "📸 <b>Мои аватары</b>",
+        "avatars.add": "➕ Добавить аватар",
+        "avatars.empty": "У вас пока нет аватаров. Добавьте первый!",
+        "avatars.prompt_photo": "📷 Отправьте фото для аватара",
+        "avatars.prompt_name": "📝 Введите название (отображаемое имя) для аватара",
+        "avatars.ph_name": "Например: Портрет в студии",
+        "avatars.name_empty": "Пожалуйста, введите название аватара.",
+        "avatars.saved": "✅ Аватар «{name}» сохранён",
+        "avatars.error_upload": "Не удалось сохранить аватар. Попробуйте позже.",
+        "avatars.error_delete": "Не удалось удалить аватар.",
+        "avatars.deleted": "Удалено",
+        "avatars.choose_source": "Выберите источник фото:",
+        "avatars.btn_send_new": "📤 Отправить новое фото",
+        "avatars.btn_choose": "📚 Выбрать аватар",
+        "avatars.pick_title": "Выберите аватар из списка:",
+        "avatars.error_pick": "Не удалось выбрать аватар. Попробуйте снова.",
     },
     "en": {
         # Keyboard labels
         "kb.profile": "Profile 👤",
         "kb.topup": "Top up ✨",
         "kb.generate": "Generate 🖼️",
+        "kb.avatars": "My Avatars 📸",
 
         # Start
         "start.welcome": (
@@ -168,6 +189,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "- /start — greeting and balance sync\n"
             "- /profile — user info and balance\n"
             "- /generate — create image from text prompt\n"
+            "- /avatars — manage avatars\n"
             "- /topup — top up tokens\n"
             "- /prices — token prices\n"
             "- /lang — choose interface language\n\n"
@@ -264,6 +286,24 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.result_caption": "Result ✨",
         "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
         "gen.unknown_type": "Unknown generation type. Start over: /generate",
+
+        # Avatars
+        "avatars.title": "📸 <b>My Avatars</b>",
+        "avatars.add": "➕ Add avatar",
+        "avatars.empty": "You don't have avatars yet. Add one!",
+        "avatars.prompt_photo": "📷 Send a photo for the avatar",
+        "avatars.prompt_name": "📝 Enter a display name for the avatar",
+        "avatars.ph_name": "e.g. Studio portrait",
+        "avatars.name_empty": "Please enter an avatar name.",
+        "avatars.saved": "✅ Avatar “{name}” saved",
+        "avatars.error_upload": "Failed to save avatar. Please try later.",
+        "avatars.error_delete": "Failed to delete avatar.",
+        "avatars.deleted": "Deleted",
+        "avatars.choose_source": "Choose photo source:",
+        "avatars.btn_send_new": "📤 Send a new photo",
+        "avatars.btn_choose": "📚 Choose avatar",
+        "avatars.pick_title": "Select an avatar from the list:",
+        "avatars.error_pick": "Failed to pick avatar. Please try again.",
     },
 }
 

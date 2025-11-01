@@ -68,6 +68,7 @@ class GenerateStates(StatesGroup):
     waiting_photos = State()
     choosing_ratio = State()
     confirming = State()
+    choosing_avatar = State()
 
 
 def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
@@ -131,6 +132,25 @@ def photo_count_keyboard(selected: int | None = None, lang: str | None = None) -
     # Третий ряд: подтверждение
     rows.append([InlineKeyboardButton(text=t(lang, "gen.confirm_label"), callback_data="pc:confirm")])
 
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def avatar_source_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "avatars.btn_send_new"), callback_data="avatar_src:new")],
+            [InlineKeyboardButton(text=t(lang, "avatars.btn_choose"), callback_data="avatar_src:pick")],
+        ]
+    )
+
+
+def avatars_pick_keyboard(items: list[dict]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for r in items:
+        aid = r.get("id")
+        name = r.get("display_name") or "—"
+        rows.append([InlineKeyboardButton(text=name, callback_data=f"avatar_pick:{aid}")])
+    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="avatar_src:new")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -206,6 +226,14 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
         return
     elif gen_type == "text_photo":
+        # Проверим наличие аватаров и предложим выбор источника фото
+        assert _db is not None
+        avatars = await _db.list_avatars(message.from_user.id)
+        if avatars:
+            await state.set_state(GenerateStates.waiting_prompt)  # остаёмся в том же состоянии для кнопок
+            await message.answer(t(lang, "avatars.choose_source"), reply_markup=avatar_source_keyboard(lang))
+            return
+        # Если аватаров нет — продолжаем стандартный поток
         await state.update_data(photos_needed=1, photos=[])
         await state.set_state(GenerateStates.waiting_photos)
         await message.answer(t(lang, "gen.upload_photo"))
@@ -302,6 +330,67 @@ async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> N
     else:
         await callback.answer()
         return
+
+
+@router.callback_query(StateFilter(GenerateStates.waiting_prompt))
+async def avatar_source_choice(callback: CallbackQuery, state: FSMContext) -> None:
+    data = callback.data or ""
+    if data == "avatar_src:new":
+        st = await state.get_data()
+        lang = st.get("lang")
+        await state.update_data(photos_needed=1, photos=[])
+        await state.set_state(GenerateStates.waiting_photos)
+        await callback.message.answer(t(lang, "gen.upload_photo"))
+        await callback.answer()
+        return
+    if data == "avatar_src:pick":
+        assert _db is not None
+        user = await _db.get_user(callback.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+        items = await _db.list_avatars(callback.from_user.id)
+        if not items:
+            await callback.answer()
+            return
+        await state.set_state(GenerateStates.choosing_avatar)
+        await callback.message.answer(t(lang, "avatars.pick_title"), reply_markup=avatars_pick_keyboard(items))
+        await callback.answer()
+        return
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar))
+async def pick_avatar(callback: CallbackQuery, state: FSMContext) -> None:
+    data = callback.data or ""
+    # Возврат к варианту «Отправить новое фото»
+    if data == "avatar_src:new":
+        st = await state.get_data()
+        lang = st.get("lang")
+        await state.update_data(photos_needed=1, photos=[])
+        await state.set_state(GenerateStates.waiting_photos)
+        await callback.message.answer(t(lang, "gen.upload_photo"))
+        await callback.answer()
+        return
+    if not data.startswith("avatar_pick:"):
+        await callback.answer()
+        return
+    try:
+        aid = int(data.split(":", 1)[1])
+    except Exception:
+        await callback.answer()
+        return
+    assert _db is not None
+    rec = await _db.get_avatar(aid)
+    user = await _db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+    if not rec:
+        await callback.message.answer(t(lang, "avatars.error_pick"))
+        await callback.answer()
+        return
+    # Сохраняем путь к файлу и переходим к выбору соотношения
+    await state.update_data(avatar_file_path=rec.get("file_path"), photos_needed=1, photos=[])
+    await state.set_state(GenerateStates.choosing_ratio)
+    await callback.message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
+    await callback.answer()
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos), F.photo)
@@ -417,6 +506,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     gen_type = st.get("gen_type")
     ratio = st.get("ratio", "auto")
     photos = st.get("photos", [])
+    avatar_file_path = st.get("avatar_file_path")
 
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
@@ -452,7 +542,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     image_resolution = "2K"
     max_images = 1
     # Выбор модели: Seedream V4 — для текстовой генерации и редактирования (из конфига)
-    model = _seedream_model_edit if len(photos) > 0 else _seedream_model_t2i
+    model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path) else _seedream_model_t2i
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели)
     image_urls = []
@@ -465,6 +555,15 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 image_urls.append(file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+    elif isinstance(avatar_file_path, str) and avatar_file_path:
+        try:
+            # Для приватного бакета создаём временную подпись и отдаём URL
+            assert _db is not None
+            signed_url = await _db.create_signed_url(avatar_file_path, expires_in=600)
+            if signed_url:
+                image_urls.append(signed_url)
+        except Exception as e:
+            _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
     try:
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
