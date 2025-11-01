@@ -1,6 +1,7 @@
 from aiogram import Router, html, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.fsm.context import FSMContext
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
@@ -28,8 +29,10 @@ def _language_keyboard() -> InlineKeyboardMarkup:
 
 
 @router.message(CommandStart())
-async def start(message: Message) -> None:
+async def start(message: Message, state: FSMContext) -> None:
     assert _db is not None
+    # Всегда сбрасываем состояние при /start, чтобы начать процесс заново
+    await state.clear()
     # Если пользователя нет в базе — это первый запуск: сначала попросим выбрать язык
     existing = await _db.get_user(message.from_user.id)
     if not existing:
@@ -63,8 +66,9 @@ async def start(message: Message) -> None:
 
 # Запуск главного меню по текстовой кнопке
 @router.message((F.text == t("ru", "kb.start")) | (F.text == t("en", "kb.start")))
-async def start_text(message: Message) -> None:
-    await start(message)
+async def start_text(message: Message, state: FSMContext) -> None:
+    # Сбрасываем состояние и показываем главное меню
+    await start(message, state)
 
 
 @router.message(Command("help"))

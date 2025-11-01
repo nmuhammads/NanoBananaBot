@@ -432,11 +432,20 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
 
 @router.message(StateFilter(GenerateStates.waiting_photos))
 async def require_photo(message: Message, state: FSMContext) -> None:
+    # Если пользователь нажал «Сгенерировать 🖼️» или «Новая генерация 🖼️» — начинаем заново
+    text = (message.text or "").strip()
     st = await state.get_data()
+    lang = st.get("lang")
+    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
+        await start_generate(message, state)
+        return
+    # Если пользователь открыл главное меню или ввёл /start — не мешаем обработчику старт
+    if text in {t("ru", "kb.start"), t("en", "kb.start")} or text.startswith("/start"):
+        # Позволим обработчику /start очистить состояние и показать меню
+        return
     photos = list(st.get("photos", []))
     photos_needed = int(st.get("photos_needed", 1))
     next_idx = min(len(photos) + 1, photos_needed)
-    lang = st.get("lang")
     await message.answer(t(lang, "gen.require_photo", next=next_idx, total=photos_needed))
 
 
