@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, Header, HTTPException
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Update, BotCommand
+from aiogram.types import Update, BotCommand, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.types.input_file import URLInputFile
 from aiogram.fsm.storage.memory import MemoryStorage
 from urllib.parse import urlparse, parse_qs, unquote
@@ -267,6 +267,13 @@ async def seedream_callback(request: Request) -> dict:
                     chat_id=int(user_id),
                     document=URLInputFile(image_url, filename=_guess_filename(image_url)),
                     caption=t(lang, "gen.result_caption"),
+                    reply_markup=ReplyKeyboardMarkup(
+                        keyboard=[
+                            [KeyboardButton(text=t(lang, "kb.new_generation"))],
+                            [KeyboardButton(text=t(lang, "kb.start"))],
+                        ],
+                        resize_keyboard=True,
+                    ),
                 )
             except Exception as e:
                 logger.warning("Failed to send document to user %s: %s", user_id, e)

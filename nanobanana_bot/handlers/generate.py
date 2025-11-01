@@ -6,6 +6,8 @@ from aiogram.types import (
     InlineKeyboardButton,
     CallbackQuery,
     ForceReply,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
 )
 from aiogram.types.input_file import URLInputFile
 from urllib.parse import urlparse, parse_qs, unquote
@@ -443,6 +445,11 @@ async def require_photo(message: Message, state: FSMContext) -> None:
 async def start_generate_text(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
+# Запуск генерации по кнопке «Новая генерация»
+@router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")))
+async def start_generate_text_new(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state)
+
 
 @router.callback_query(StateFilter(GenerateStates.choosing_ratio))
 async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
@@ -619,6 +626,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer_document(
         document=URLInputFile(image_url, filename=_guess_filename(image_url)),
         caption=t(lang, "gen.result_caption"),
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text=t(lang, "kb.new_generation"))],
+                [KeyboardButton(text=t(lang, "kb.start"))],
+            ],
+            resize_keyboard=True,
+        ),
     )
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)

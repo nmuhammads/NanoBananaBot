@@ -61,6 +61,12 @@ async def start(message: Message) -> None:
     )
 
 
+# Запуск главного меню по текстовой кнопке
+@router.message((F.text == t("ru", "kb.start")) | (F.text == t("en", "kb.start")))
+async def start_text(message: Message) -> None:
+    await start(message)
+
+
 @router.message(Command("help"))
 async def help_cmd(message: Message) -> None:
     assert _db is not None

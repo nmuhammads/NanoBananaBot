@@ -21,6 +21,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.topup": "Пополнить баланс ✨",
         "kb.generate": "Сгенерировать 🖼️",
         "kb.avatars": "Мои аватары 📸",
+        "kb.new_generation": "Новая генерация 🖼️",
+        "kb.start": "Главное меню",
 
         # Start
         "start.welcome": (
@@ -166,6 +168,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.topup": "Top up ✨",
         "kb.generate": "Generate 🖼️",
         "kb.avatars": "My Avatars 📸",
+        "kb.new_generation": "New generation 🖼️",
+        "kb.start": "Main menu",
 
         # Start
         "start.welcome": (
