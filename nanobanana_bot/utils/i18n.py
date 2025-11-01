@@ -108,7 +108,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.choose_method": "🪄 <b>Выберите режим</b>",
         "gen.type.text": "Текст (Только промпт) ✨",
         "gen.type.text_photo": "Текст + Фото ✨",
-        "gen.type.text_multi": "Текст + Несколько фото ✨",
+        "gen.type.text_multi": "Текст + несколько фото (Аватар)",
         "gen.type.edit_photo": "Редактировать фото ✂️",
         "gen.enter_prompt": "📝 Опишите идею для изображения",
         # Short placeholders for input fields
@@ -135,6 +135,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.summary.prompt": "• Промпт: {prompt}",
         "gen.summary.ratio": "• Соотношение сторон: {ratio}",
         "gen.summary.photos": "• Фото: {count} из {needed}",
+        "gen.summary.avatar": "• Аватар: {name}",
         "gen.confirm.ok": "✅ Подтвердить",
         "gen.confirm.cancel": "❌ Отмена",
         "gen.canceled": "Генерация отменена.",
@@ -255,7 +256,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.choose_method": "🪄 <b>Choose a mode</b>",
         "gen.type.text": "Text (Prompt only) ✨",
         "gen.type.text_photo": "Text + Photo ✨",
-        "gen.type.text_multi": "Text + Multiple Photos ✨",
+        "gen.type.text_multi": "Text + Multiple Photos (Avatar)",
         "gen.type.edit_photo": "Edit Photo ✂️",
         "gen.enter_prompt": "📝 Describe your idea",
         # Short placeholders for input fields
@@ -282,6 +283,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.summary.prompt": "• Prompt: {prompt}",
         "gen.summary.ratio": "• Aspect ratio: {ratio}",
         "gen.summary.photos": "• Photos: {count} of {needed}",
+        "gen.summary.avatar": "• Avatar: {name}",
         "gen.confirm.ok": "✅ Confirm",
         "gen.confirm.cancel": "❌ Cancel",
         "gen.canceled": "Generation cancelled.",

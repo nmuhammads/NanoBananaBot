@@ -272,7 +272,7 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
             f"{t(lang, 'gen.summary.prompt', prompt=html.bold(prompt))}\n"
             f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
         )
-        summary += f"• Фото: {len(photos)} из {photos_needed}"
+        summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
 
         await state.set_state(GenerateStates.confirming)
         await message.answer(summary, reply_markup=confirm_keyboard(lang))
@@ -388,8 +388,13 @@ async def pick_avatar(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(t(lang, "avatars.error_pick"))
         await callback.answer()
         return
-    # Сохраняем путь к файлу и переходим к выбору соотношения
-    await state.update_data(avatar_file_path=rec.get("file_path"), photos_needed=1, photos=[])
+    # Сохраняем путь к файлу, имя аватара и переходим к выбору соотношения
+    await state.update_data(
+        avatar_file_path=rec.get("file_path"),
+        avatar_display_name=rec.get("display_name"),
+        photos_needed=1,
+        photos=[],
+    )
     await state.set_state(GenerateStates.choosing_ratio)
     await callback.message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
     await callback.answer()
@@ -475,6 +480,8 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     prompt = st.get("prompt")
     photos = st.get("photos", [])
     photos_needed = st.get("photos_needed")
+    avatar_file_path = st.get("avatar_file_path")
+    avatar_display_name = st.get("avatar_display_name")
 
     st2 = await state.get_data()
     lang = st2.get("lang")
@@ -492,7 +499,10 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
     if gen_type in {"text_photo", "text_multi"}:
-        summary += f"• Фото: {len(photos)} из {photos_needed}"
+        if gen_type == "text_photo" and isinstance(avatar_file_path, str) and avatar_file_path:
+            summary += t(lang, "gen.summary.avatar", name=(avatar_display_name or "—"))
+        else:
+            summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
 
     await state.set_state(GenerateStates.confirming)
     await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
