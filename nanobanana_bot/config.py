@@ -33,7 +33,10 @@ def load_settings() -> Settings:
 
     bot_token = os.getenv("BOT_TOKEN", "")
     supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_KEY", "")
+    # Prefer service role key if provided; fallback to anon/public key
+    supabase_service_key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    supabase_key_anon = os.getenv("SUPABASE_KEY", "")
+    supabase_key = supabase_service_key or supabase_key_anon
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     # Use official KIE API base for job endpoints by default
     seedream_api_base = os.getenv("SEEDREAM_API_BASE", "https://api.kie.ai/api/v1")
@@ -82,7 +85,7 @@ def load_settings() -> Settings:
     if not bot_token:
         raise RuntimeError("BOT_TOKEN is required")
     if not supabase_url or not supabase_key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_KEY are required")
+        raise RuntimeError("SUPABASE_URL and one of SUPABASE_SERVICE_KEY or SUPABASE_KEY is required")
 
     return Settings(
         bot_token=bot_token,

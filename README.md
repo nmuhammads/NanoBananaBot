@@ -13,7 +13,7 @@ Seedream Bot — Telegram-бот для генерации изображени�
 1. Склонируйте или скопируйте папку `SeedreamBot` в отдельный репозиторий (имя папки произвольное).
 2. Создайте файл `.env` по примеру `.env.example` и заполните значения:
    - `BOT_TOKEN`
-   - `SUPABASE_URL`, `SUPABASE_KEY`
+   - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (рекомендуется) или `SUPABASE_KEY` (fallback)
    - `REDIS_URL`
    - `SEEDREAM_API_BASE`, `SEEDREAM_API_KEY`
    - `TRIBUTE_API_KEY`, `TRIBUTE_PRODUCT_MAP` (для оплаты через Tribute)
