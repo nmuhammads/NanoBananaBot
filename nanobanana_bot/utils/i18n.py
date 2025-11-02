@@ -107,8 +107,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Generate
         "gen.choose_method": "🪄 <b>Выберите режим</b>",
         "gen.type.text": "Текст (Только промпт) ✨",
-        "gen.type.text_photo": "Текст + Фото ✨",
-        "gen.type.text_multi": "Текст + несколько фото (Аватар)",
+        "gen.type.text_photo": "Текст + Фото/Аватар ✨",
+        "gen.type.text_multi": "Текст + несколько фото/Аватаров ✨",
         "gen.type.edit_photo": "Редактировать фото ✂️",
         "gen.enter_prompt": "📝 Опишите идею для изображения",
         # Short placeholders for input fields
@@ -166,6 +166,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "avatars.pick_multi_title": "Выберите аватары (до 5):",
         "avatars.multi.limit_reached": "Можно выбрать до 5 аватаров.",
         "avatars.error_pick": "Не удалось выбрать аватар. Попробуйте снова.",
+        "avatars.delete_hint": "ℹ️ Нажмите на аватар, чтобы удалить. Появится подтверждение.",
+        "avatars.confirm_delete": "Удалить аватар «{name}»? Это действие необратимо.",
+        "avatars.btn_delete": "🗑️ Удалить",
+        "avatars.add.cancel_hint": "Нажмите «Отмена» ниже, чтобы отменить добавление.",
     },
     "en": {
         # Keyboard labels
@@ -259,8 +263,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Generate
         "gen.choose_method": "🪄 <b>Choose a mode</b>",
         "gen.type.text": "Text (Prompt only) ✨",
-        "gen.type.text_photo": "Text + Photo ✨",
-        "gen.type.text_multi": "Text + Multiple Photos (Avatar)",
+        "gen.type.text_photo": "Text + Photo/Avatar ✨",
+        "gen.type.text_multi": "Text + Multiple Photos/Avatars ✨",
         "gen.type.edit_photo": "Edit Photo ✂️",
         "gen.enter_prompt": "📝 Describe your idea",
         # Short placeholders for input fields
@@ -318,6 +322,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "avatars.pick_multi_title": "Choose avatars (up to 5):",
         "avatars.multi.limit_reached": "You can select up to 5 avatars.",
         "avatars.error_pick": "Failed to pick avatar. Please try again.",
+        "avatars.delete_hint": "ℹ️ Tap an avatar to delete. A confirmation will appear.",
+        "avatars.confirm_delete": "Delete avatar “{name}”? This action cannot be undone.",
+        "avatars.btn_delete": "🗑️ Delete",
+        "avatars.add.cancel_hint": "Tap ‘Cancel’ below to abort adding.",
     },
 }
 
