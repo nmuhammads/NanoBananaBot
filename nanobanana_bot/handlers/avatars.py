@@ -194,17 +194,41 @@ async def confirm_delete_avatar_cb(callback: CallbackQuery, state: FSMContext) -
     if not ok:
         await callback.answer(t(lang, "avatars.error_delete"), show_alert=True)
         return
-    # Обновим список
-    await avatars_command(callback.message, state)
+    # Обновим список для <пользователя>, а не сообщения бота
+    items = await _db.list_avatars(callback.from_user.id)
+    if not items:
+        await callback.message.answer(
+            t(lang, "avatars.empty"),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text=t(lang, "avatars.add"), callback_data="avatar:add")]]
+            ),
+        )
+    else:
+        lines = [t(lang, "avatars.title"), t(lang, "avatars.delete_hint")]
+        for r in items:
+            lines.append(f"• {r.get('display_name')}")
+        await callback.message.answer("\n".join(lines), reply_markup=_avatars_list_keyboard(items, lang))
     await callback.answer(t(lang, "avatars.deleted"))
 
 
 @router.callback_query(F.data == "avatar:del_cancel")
 async def cancel_delete_avatar_cb(callback: CallbackQuery, state: FSMContext) -> None:
-    # Просто перерисуем список
+    # Перерисовать список для пользователя, избегая message.from_user (бот)
     user = await _db.get_user(callback.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
-    await avatars_command(callback.message, state)
+    items = await _db.list_avatars(callback.from_user.id)
+    if not items:
+        await callback.message.answer(
+            t(lang, "avatars.empty"),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text=t(lang, "avatars.add"), callback_data="avatar:add")]]
+            ),
+        )
+    else:
+        lines = [t(lang, "avatars.title"), t(lang, "avatars.delete_hint")]
+        for r in items:
+            lines.append(f"• {r.get('display_name')}")
+        await callback.message.answer("\n".join(lines), reply_markup=_avatars_list_keyboard(items, lang))
     await callback.answer(t(lang, "gen.confirm.cancel"))
 
 
@@ -212,5 +236,19 @@ async def cancel_delete_avatar_cb(callback: CallbackQuery, state: FSMContext) ->
 async def cancel_add_avatar_cb(callback: CallbackQuery, state: FSMContext) -> None:
     # Отменить добавление и вернуть список
     await state.clear()
-    await avatars_command(callback.message, state)
-    await callback.answer(t((await _db.get_user(callback.from_user.id) or {}).get("language_code") or callback.from_user.language_code, "gen.confirm.cancel"))
+    user = await _db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+    items = await _db.list_avatars(callback.from_user.id)
+    if not items:
+        await callback.message.answer(
+            t(lang, "avatars.empty"),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text=t(lang, "avatars.add"), callback_data="avatar:add")]]
+            ),
+        )
+    else:
+        lines = [t(lang, "avatars.title"), t(lang, "avatars.delete_hint")]
+        for r in items:
+            lines.append(f"• {r.get('display_name')}")
+        await callback.message.answer("\n".join(lines), reply_markup=_avatars_list_keyboard(items, lang))
+    await callback.answer(t(lang, "gen.confirm.cancel"))
