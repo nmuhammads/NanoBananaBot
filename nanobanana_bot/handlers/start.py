@@ -33,9 +33,27 @@ async def start(message: Message, state: FSMContext) -> None:
     assert _db is not None
     # Всегда сбрасываем состояние при /start, чтобы начать процесс заново
     await state.clear()
+    # Идентификаторы пользователя и источника (имя бота) для регистрации подписки
+    user_id = int(message.from_user.id)
+    bot_me = await message.bot.get_me()
+    bot_name = bot_me.username if hasattr(bot_me, "username") else None
     # Если пользователя нет в базе — это первый запуск: сначала попросим выбрать язык
-    existing = await _db.get_user(message.from_user.id)
+    existing = await _db.get_user(user_id)
     if not existing:
+        # Минимальная регистрация пользователя в общей таблице users
+        _db.client.table("users").upsert({
+            "user_id": user_id,
+            "username": message.from_user.username,
+            "first_name": message.from_user.first_name,
+            "last_name": message.from_user.last_name,
+            "language_code": message.from_user.language_code,
+        }, on_conflict="user_id").execute()
+        # Регистрация подписки на текущего бота (id + username бота)
+        if bot_name:
+            _db.client.table("bot_subscriptions").upsert({
+                "user_id": user_id,
+                "bot_source": bot_name,
+            }, on_conflict="user_id,bot_source").execute()
         lang_hint = normalize_lang(message.from_user.language_code)
         await message.answer(
             t(lang_hint, "start.choose_language"),
@@ -43,9 +61,16 @@ async def start(message: Message, state: FSMContext) -> None:
         )
         return
 
+    # Для повторного /start добавим/актуализируем подписку (без изменений UI)
+    if bot_name:
+        _db.client.table("bot_subscriptions").upsert({
+            "user_id": user_id,
+            "bot_source": bot_name,
+        }, on_conflict="user_id,bot_source").execute()
+
     # Иначе — обычное приветствие с уже выбранным языком
     lang = normalize_lang(existing.get("language_code") or message.from_user.language_code)
-    balance = await _db.get_token_balance(message.from_user.id)
+    balance = await _db.get_token_balance(user_id)
 
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
