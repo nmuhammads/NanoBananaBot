@@ -156,6 +156,16 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.done_text": "✨ Готово! Остаток: {balance}\nСоотношение: {ratio}",
         "gen.result_caption": "Результат ✨",
         "gen.task_accepted": "Задача отправлена. Результат скоро будет здесь ✨",
+        # Failure handling
+        "gen.failed.prompt_too_long": (
+            "❗️ Промпт слишком длинный. Максимум 2500 символов.\n"
+            "Возврат 4 токенов. Баланс: {balance}\n"
+            "Сократите текст и попробуйте снова."
+        ),
+        "gen.failed.generic": (
+            "❗️ Генерация не удалась. Причина: {reason}.\n"
+            "Возврат 4 токенов. Баланс: {balance}"
+        ),
         "gen.unknown_type": "Неизвестный тип генерации. Начните заново: /generate",
         
         # Avatars
@@ -323,6 +333,16 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.done_text": "✨ Done! Balance left: {balance}\nAspect ratio: {ratio}",
         "gen.result_caption": "Result ✨",
         "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
+        # Failure handling
+        "gen.failed.prompt_too_long": (
+            "❗️ Prompt too long. Max 2500 characters.\n"
+            "Refunded 4 tokens. Balance: {balance}\n"
+            "Please shorten the prompt and try again."
+        ),
+        "gen.failed.generic": (
+            "❗️ Generation failed. Reason: {reason}.\n"
+            "Refunded 4 tokens. Balance: {balance}"
+        ),
         "gen.unknown_type": "Unknown generation type. Start over: /generate",
 
         # Avatars

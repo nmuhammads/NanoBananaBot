@@ -228,9 +228,119 @@ async def seedream_callback(request: Request) -> dict:
     except Exception as e:
         logger.warning("General parsing error for KIE callback: %s", e)
 
+    # Handle failure callbacks (e.g., prompt too long, policy, timeout) and refund tokens
+    try:
+        payload_data = data.get("data") or {}
+        state = (payload_data.get("state") or payload_data.get("status") or (data.get("state") if isinstance(data, dict) else None) or (data.get("status") if isinstance(data, dict) else None) or "").lower()
+        fail_msg = payload_data.get("failMsg") or data.get("msg") or ""
+        fail_code = payload_data.get("failCode") or data.get("code")
+        # Consider error codes where code is not 0/200/success
+        is_error_code = False
+        try:
+            if fail_code is not None:
+                if isinstance(fail_code, str):
+                    is_error_code = fail_code not in {"0", "200", "success"}
+                elif isinstance(fail_code, (int, float)):
+                    is_error_code = int(fail_code) not in {0, 200}
+        except Exception:
+            is_error_code = False
+
+        is_error_state = state in {"fail", "failed", "error", "timeout", "cancelled", "canceled"}
+
+        # Treat any callback without image_url as failure to avoid long waits
+        if not image_url:
+            # Mark generation as failed if we know its id
+            if generation_id is not None:
+                try:
+                    reason_str = fail_msg or ("status=" + state if state else "") or "Unknown error"
+                    reason_full = (f"Seedream fail {fail_code}: {reason_str}" if fail_code is not None else f"Seedream fail: {reason_str}").strip()
+                    await db.mark_generation_failed(int(generation_id), reason_full)
+                except Exception as e:
+                    logger.warning("Failed to mark generation failed id=%s: %s", generation_id, e)
+
+            # If we have user_id, refund tokens and notify the user
+            if user_id is not None:
+                try:
+                    # Fetch language and current balance in one go when possible
+                    res = db.client.table("users").select("language_code,balance").eq("user_id", int(user_id)).limit(1).execute()
+                    rows = getattr(res, "data", []) or []
+                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                    current_balance = rows[0].get("balance") if rows else None
+                    if current_balance is None:
+                        current_balance = await db.get_token_balance(int(user_id))
+                    new_balance = int(current_balance or 0) + 4
+                    await db.set_token_balance(int(user_id), new_balance)
+
+                    # Choose localized message based on failure reason
+                    fm_lower = (fail_msg or "").lower()
+                    if "prompt too long" in fm_lower or "maximum character limit" in fm_lower:
+                        text = t(lang, "gen.failed.prompt_too_long", balance=new_balance)
+                    else:
+                        # If we have a known error state, reflect it in the message
+                        if is_error_state:
+                            reason_text = fail_msg or state
+                        elif is_error_code:
+                            reason_text = fail_msg or f"code={fail_code}"
+                        else:
+                            reason_text = fail_msg or "Unknown error"
+                        text = t(lang, "gen.failed.generic", reason=reason_text, balance=new_balance)
+
+                    await bot.send_message(
+                        chat_id=int(user_id),
+                        text=text,
+                        reply_markup=ReplyKeyboardMarkup(
+                            keyboard=[
+                                [KeyboardButton(text=t(lang, "kb.new_generation"))],
+                                [KeyboardButton(text=t(lang, "kb.start"))],
+                            ],
+                            resize_keyboard=True,
+                        ),
+                    )
+                except Exception as e:
+                    logger.warning("Failed to refund/notify user %s: %s", user_id, e)
+            else:
+                logger.warning("Seedream failure callback without user_id; cannot refund or notify. data=%s", data)
+
+            return {"ok": True}
+    except Exception as e:
+        logger.warning("Error while handling failure state in callback: %s", e)
+
+    # If we reached here and image_url still missing, treat as failure
     if not image_url:
-        logger.warning("Seedream callback missing image url after parsing: %s", data)
-        return {"ok": False, "error": "missing image url"}
+        logger.warning("Seedream callback missing image url after parsing; notifying user as generic failure: %s", data)
+        try:
+            if generation_id is not None:
+                try:
+                    await db.mark_generation_failed(int(generation_id), "Seedream fail: Missing image url")
+                except Exception as e:
+                    logger.warning("Failed to mark generation failed id=%s: %s", generation_id, e)
+            if user_id is not None:
+                try:
+                    res = db.client.table("users").select("language_code,balance").eq("user_id", int(user_id)).limit(1).execute()
+                    rows = getattr(res, "data", []) or []
+                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                    current_balance = rows[0].get("balance") if rows else None
+                    if current_balance is None:
+                        current_balance = await db.get_token_balance(int(user_id))
+                    new_balance = int(current_balance or 0) + 4
+                    await db.set_token_balance(int(user_id), new_balance)
+                    text = t(lang, "gen.failed.generic", reason="Unknown error", balance=new_balance)
+                    await bot.send_message(
+                        chat_id=int(user_id),
+                        text=text,
+                        reply_markup=ReplyKeyboardMarkup(
+                            keyboard=[
+                                [KeyboardButton(text=t(lang, "kb.new_generation"))],
+                                [KeyboardButton(text=t(lang, "kb.start"))],
+                            ],
+                            resize_keyboard=True,
+                        ),
+                    )
+                except Exception as e:
+                    logger.warning("Failed to refund/notify user %s: %s", user_id, e)
+        except Exception as e:
+            logger.warning("Failure fallback notify error: %s", e)
+        return {"ok": True}
 
     try:
         # If we have generation_id, update Supabase and fetch user_id when needed
