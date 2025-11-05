@@ -20,15 +20,19 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.profile": "Профиль 👤",
         "kb.topup": "Пополнить баланс ✨",
         "kb.generate": "Сгенерировать 🖼️",
+        "kb.avatars": "Мои аватары 📸",
+        "kb.new_generation": "Новая генерация 🖼️",
+        "kb.start": "Главное меню",
 
         # Start
         "start.welcome": (
         "✨ <b>Seedream Bot</b>\n\n"
             "Привет, {name}! Добро пожаловать 👋\n\n"
             "✨ Возможности:\n"
-            "• Генерация изображений по тексту\n"
-            "• Текст + фото, несколько фото\n"
-            "• Редактирование фото ✂️\n\n"
+            "• Текст + Фото/Аватар ✨\n"
+            "• Текст + несколько фото/Аватаров ✨ (до 5)\n"
+            "• Редактирование фото ✂️\n"
+            "• Мои аватары: добавление и удаление 📸\n\n"
             "💳 Стоимость: <b>4 токена</b> за изображение\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
@@ -43,17 +47,28 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "- /start — приветствие и синхронизация баланса\n"
             "- /profile — информация о пользователе и баланс\n"
             "- /generate — создать изображение по текстовому запросу\n"
+            "- /avatars — управление аватарами\n"
             "- /topup — пополнить баланс токенов\n"
             "- /prices — цены на токены\n"
             "- /lang — выбрать язык интерфейса\n\n"
+            "Новое:\n"
+            "• «Текст + Фото/Аватар ✨» — отправьте фото или выберите аватар\n"
+            "• «Текст + несколько фото/Аватаров ✨» — отметьте до 5 аватаров на шаге «➕ Добавить аватары»\n"
+            "• В /avatars добавляйте и удаляйте аватары (удаление с подтверждением)\n\n"
+            "Как пользоваться:\n"
+            "1) Выберите режим в /generate\n"
+            "2) Введите промпт\n"
+            "3) Для «Фото/Аватар» — отправьте фото или выберите аватар\n"
+            "4) Для «несколько фото/Аватаров» — выберите количество или добавьте аватары, подтвердите\n"
+            "5) Выберите соотношение сторон и подтвердите задачу\n\n"
             "Примеры промптов:\n"
             "• космический нано банан, неоновая подсветка, стиль synthwave\n"
             "• реалистичный портрет нано банана, мягкий свет, 85mm, f/1.8\n"
             "• постер в стиле ретро, банан‑супергерой, зернистая текстура\n\n"
             "Советы:\n"
             "• Добавляйте стиль, освещение и композицию для лучшего результата\n"
-            "• Для фото‑редактирования отправьте фото и выберите «Текст + фото 🖼️»\n"
-            "• Соотношение сторон выбирается на шаге перед подтверждением\n\n"
+            "• Для фото‑редактирования отправьте фото и выберите «Редактировать фото ✂️»\n"
+            "• Соотношение сторон выбирается перед подтверждением\n\n"
             "Стоимость: 4 токена за изображение. Пополнение: /topup"
         ),
 
@@ -103,8 +118,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Generate
         "gen.choose_method": "🪄 <b>Выберите режим</b>",
         "gen.type.text": "Текст (Только промпт) ✨",
-        "gen.type.text_photo": "Текст + Фото ✨",
-        "gen.type.text_multi": "Текст + Несколько фото ✨",
+        "gen.type.text_photo": "Текст + Фото/Аватар ✨",
+        "gen.type.text_multi": "Текст + несколько фото/Аватаров ✨",
         "gen.type.edit_photo": "Редактировать фото ✂️",
         "gen.enter_prompt": "📝 Опишите идею для изображения",
         # Short placeholders for input fields
@@ -114,6 +129,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.upload_photo": "📷 Добавьте фото, которое учитывается при генерации.",
         "gen.edit.enter_prompt": "✍️ Что изменить в фото?",
         "gen.choose_count": "📷 <b>Выберите количество фото</b>\n\n• 1–5 в первом ряду, 6–10 во втором\n• Нажмите ‘Запустить ✅’",
+        "gen.btn.add_avatars": "➕ Добавить аватары",
         "gen.use_buttons": "Пожалуйста, выберите количество фото с помощью кнопок ниже.",
         "gen.confirm_label": "Запустить ✅",
         "gen.confirmed_count": "✅ Выбрано: {count} фото.\n📸 Фото 1 из {count}: отправьте первое изображение.",
@@ -131,6 +147,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.summary.prompt": "• Промпт: {prompt}",
         "gen.summary.ratio": "• Соотношение сторон: {ratio}",
         "gen.summary.photos": "• Фото: {count} из {needed}",
+        "gen.summary.avatar": "• Аватар: {name}",
+        "gen.summary.avatars": "• Аватары: {names}",
         "gen.confirm.ok": "✅ Подтвердить",
         "gen.confirm.cancel": "❌ Отмена",
         "gen.canceled": "Генерация отменена.",
@@ -139,21 +157,49 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.result_caption": "Результат ✨",
         "gen.task_accepted": "Задача отправлена. Результат скоро будет здесь ✨",
         "gen.unknown_type": "Неизвестный тип генерации. Начните заново: /generate",
+        
+        # Avatars
+        "avatars.title": "📸 <b>Мои аватары</b>",
+        "avatars.add": "➕ Добавить аватар",
+        "avatars.empty": "У вас пока нет аватаров. Добавьте первый!",
+        "avatars.prompt_photo": "📷 Отправьте фото для аватара",
+        "avatars.prompt_name": "📝 Введите название (отображаемое имя) для аватара",
+        "avatars.ph_name": "Например: Портрет в студии",
+        "avatars.name_empty": "Пожалуйста, введите название аватара.",
+        "avatars.saved": "✅ Аватар «{name}» сохранён",
+        "avatars.error_upload": "Не удалось сохранить аватар. Попробуйте позже.",
+        "avatars.error_delete": "Не удалось удалить аватар.",
+        "avatars.deleted": "Удалено",
+        "avatars.choose_source": "Хотите сгенерировать фото, используя Фото или ваш Аватар?",
+        "avatars.btn_send_new": "📤 Отправить новое фото",
+        "avatars.btn_choose": "📚 Выбрать аватар",
+        "avatars.pick_title": "Выберите аватар из списка:",
+        "avatars.pick_multi_title": "Выберите аватары (до 5):",
+        "avatars.multi.limit_reached": "Можно выбрать до 5 аватаров.",
+        "avatars.error_pick": "Не удалось выбрать аватар. Попробуйте снова.",
+        "avatars.delete_hint": "ℹ️ Нажмите на аватар, чтобы удалить. Появится подтверждение.",
+        "avatars.confirm_delete": "Удалить аватар «{name}»? Это действие необратимо.",
+        "avatars.btn_delete": "🗑️ Удалить",
+        "avatars.add.cancel_hint": "Нажмите «Отмена» ниже, чтобы отменить добавление.",
     },
     "en": {
         # Keyboard labels
         "kb.profile": "Profile 👤",
         "kb.topup": "Top up ✨",
         "kb.generate": "Generate 🖼️",
+        "kb.avatars": "My Avatars 📸",
+        "kb.new_generation": "New generation 🖼️",
+        "kb.start": "Main menu",
 
         # Start
         "start.welcome": (
         "✨ <b>Seedream Bot</b>\n\n"
             "Hello, {name}! Welcome 👋\n\n"
             "✨ Features:\n"
-            "• Text-to-image generation\n"
-            "• Text + photo, multiple photos\n"
-            "• Edit photo ✂️\n\n"
+            "• Text + Photo/Avatar ✨\n"
+            "• Text + Multiple Photos/Avatars ✨ (up to 5)\n"
+            "• Edit photo ✂️\n"
+            "• Manage avatars: add & delete 📸\n\n"
             "💳 Cost: <b>4 tokens</b> per image\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
@@ -168,16 +214,27 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "- /start — greeting and balance sync\n"
             "- /profile — user info and balance\n"
             "- /generate — create image from text prompt\n"
+            "- /avatars — manage avatars\n"
             "- /topup — top up tokens\n"
             "- /prices — token prices\n"
             "- /lang — choose interface language\n\n"
+            "New:\n"
+            "• ‘Text + Photo/Avatar ✨’ — send a photo or pick an avatar\n"
+            "• ‘Text + Multiple Photos/Avatars ✨’ — pick up to 5 avatars via ‘➕ Add avatars’\n"
+            "• /avatars lets you add and delete avatars (with confirmation)\n\n"
+            "How to use:\n"
+            "1) Choose a mode in /generate\n"
+            "2) Enter a prompt\n"
+            "3) For ‘Photo/Avatar’ — send a photo or pick an avatar\n"
+            "4) For ‘Multiple Photos/Avatars’ — choose count or add avatars, then confirm\n"
+            "5) Choose aspect ratio and confirm the task\n\n"
             "Prompt examples:\n"
             "• cosmic nano banana, neon glow, synthwave style\n"
             "• realistic nano banana portrait, soft light, 85mm, f/1.8\n"
             "• retro poster, banana superhero, grainy texture\n\n"
             "Tips:\n"
             "• Add style, lighting and composition for better results\n"
-            "• For photo editing send a photo and choose ‘Text + photo 🖼️’\n"
+            "• For photo editing send a photo and choose ‘Edit Photo ✂️’\n"
             "• Aspect ratio is chosen right before confirmation\n\n"
             "Cost: 4 tokens per image. Top up: /topup"
         ),
@@ -228,8 +285,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Generate
         "gen.choose_method": "🪄 <b>Choose a mode</b>",
         "gen.type.text": "Text (Prompt only) ✨",
-        "gen.type.text_photo": "Text + Photo ✨",
-        "gen.type.text_multi": "Text + Multiple Photos ✨",
+        "gen.type.text_photo": "Text + Photo/Avatar ✨",
+        "gen.type.text_multi": "Text + Multiple Photos/Avatars ✨",
         "gen.type.edit_photo": "Edit Photo ✂️",
         "gen.enter_prompt": "📝 Describe your idea",
         # Short placeholders for input fields
@@ -239,6 +296,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.upload_photo": "📷 Attach a photo to guide generation.",
         "gen.edit.enter_prompt": "✍️ What should be changed or added?",
         "gen.choose_count": "📷 <b>Choose number of photos</b>\n\n• 1–5 in the first row, 6–10 in the second\n• Press ‘Launch ✅’",
+        "gen.btn.add_avatars": "➕ Add Avatars",
         "gen.use_buttons": "Please choose the number of photos using the buttons below.",
         "gen.confirm_label": "Launch ✅",
         "gen.confirmed_count": "✅ Selected: {count} photos.\n📸 Photo 1 of {count}: send the first image.",
@@ -256,6 +314,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.summary.prompt": "• Prompt: {prompt}",
         "gen.summary.ratio": "• Aspect ratio: {ratio}",
         "gen.summary.photos": "• Photos: {count} of {needed}",
+        "gen.summary.avatar": "• Avatar: {name}",
+        "gen.summary.avatars": "• Avatars: {names}",
         "gen.confirm.ok": "✅ Confirm",
         "gen.confirm.cancel": "❌ Cancel",
         "gen.canceled": "Generation cancelled.",
@@ -264,6 +324,30 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.result_caption": "Result ✨",
         "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
         "gen.unknown_type": "Unknown generation type. Start over: /generate",
+
+        # Avatars
+        "avatars.title": "📸 <b>My Avatars</b>",
+        "avatars.add": "➕ Add avatar",
+        "avatars.empty": "You don't have avatars yet. Add one!",
+        "avatars.prompt_photo": "📷 Send a photo for the avatar",
+        "avatars.prompt_name": "📝 Enter a display name for the avatar",
+        "avatars.ph_name": "e.g. Studio portrait",
+        "avatars.name_empty": "Please enter an avatar name.",
+        "avatars.saved": "✅ Avatar “{name}” saved",
+        "avatars.error_upload": "Failed to save avatar. Please try later.",
+        "avatars.error_delete": "Failed to delete avatar.",
+        "avatars.deleted": "Deleted",
+        "avatars.choose_source": "Would you like to generate using a Photo or your Avatar?",
+        "avatars.btn_send_new": "📤 Send a new photo",
+        "avatars.btn_choose": "📚 Choose avatar",
+        "avatars.pick_title": "Select an avatar from the list:",
+        "avatars.pick_multi_title": "Choose avatars (up to 5):",
+        "avatars.multi.limit_reached": "You can select up to 5 avatars.",
+        "avatars.error_pick": "Failed to pick avatar. Please try again.",
+        "avatars.delete_hint": "ℹ️ Tap an avatar to delete. A confirmation will appear.",
+        "avatars.confirm_delete": "Delete avatar “{name}”? This action cannot be undone.",
+        "avatars.btn_delete": "🗑️ Delete",
+        "avatars.add.cancel_hint": "Tap ‘Cancel’ below to abort adding.",
     },
 }
 
