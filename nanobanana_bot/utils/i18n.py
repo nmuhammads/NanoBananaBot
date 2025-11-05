@@ -74,12 +74,12 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Topup
         "topup.title": "Пополнение токенов ✨",
         "topup.balance": "Ваш текущий баланс: <b>{balance}</b> ✨",
-        "topup.choose": "Выберите сумму (1 ✨ = 1 токен):",
+        "topup.choose": "Выберите сумму (2 ✨ = 1 токен):",
         "topup.method.title": "Выберите способ оплаты",
         "topup.method.sbp": "Рублями / СБП",
         "topup.method.card": "Картой (Любая страна)",
         "topup.method.old_stars": "Счёт в Telegram Stars",
-        "topup.packages.title": "Выберите пакет (1 ✨ = 1 токен)",
+        "topup.packages.title": "Выберите пакет (2 ✨ = 1 токен)",
         "topup.package.unavailable": "Оплата временно недоступна. Настройте продукты в Tribute.",
         "topup.link_hint": "Нажмите на кнопку ниже для оплаты.",
         "topup.invoice_title": "Пополнение токенов",
@@ -97,7 +97,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "prices.rubles.header": "💳 Оплата рублями (СБП / карта):",
         "prices.usd.header": "💳 Оплата в долларах (карта):",
         "prices.stars.header": "✨ Оплата звёздами:",
-        "prices.stars.line": "1 токен = 1 ✨ (без комиссии)",
+        "prices.stars.line": "1 токен = 2 ✨ (без комиссии)",
         "prices.disclaimer": "ℹ️ Платёжный сервис может брать комиссию; итоговая стоимость может немного отличаться. Оплата звёздами — без комиссии.",
 
         # Generate
@@ -199,12 +199,12 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Topup
         "topup.title": "Top up tokens ✨",
         "topup.balance": "Your current balance: <b>{balance}</b> ✨",
-        "topup.choose": "Choose amount (1 ✨ = 1 token):",
+        "topup.choose": "Choose amount (2 ✨ = 1 token):",
         "topup.method.title": "Choose payment method",
         "topup.method.sbp": "Rubles / SBP",
         "topup.method.card": "Bank card (Any country)",
         "topup.method.old_stars": "Telegram Stars invoice",
-        "topup.packages.title": "Choose a package (1 ✨ = 1 token)",
+        "topup.packages.title": "Choose a package (2 ✨ = 1 token)",
         "topup.package.unavailable": "Payment temporarily unavailable. Configure products in Tribute.",
         "topup.link_hint": "Tap a button below to pay.",
         "topup.invoice_title": "Top up tokens",
@@ -222,7 +222,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "prices.rubles.header": "💳 Pay in rubles (SBP / card):",
         "prices.usd.header": "💳 Pay in USD (card):",
         "prices.stars.header": "✨ Pay with Stars:",
-        "prices.stars.line": "1 token = 1 ✨ (no commission)",
+        "prices.stars.line": "1 token = 2 ✨ (no commission)",
         "prices.disclaimer": "ℹ️ Payment service may charge a commission; final price may slightly differ. Stars payments are commission‑free.",
 
         # Generate

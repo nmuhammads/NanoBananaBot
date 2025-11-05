@@ -13,7 +13,7 @@ from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..config import Settings
 from ..utils.prices import RUBLE_PRICES, USD_PRICES, format_rubles, format_usd
-from ..utils.hub import make_hub_link, ALLOWED_AMOUNTS
+from ..utils.hub import make_hub_link, ALLOWED_AMOUNTS, ALLOWED_STAR_AMOUNTS
 import logging
 import asyncio
 import time
@@ -109,7 +109,10 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
 
     m = _norm(method)
     rows: list[list[InlineKeyboardButton]] = []
-    for tokens in sorted(ALLOWED_AMOUNTS):
+    # Stars now have their own allowed amounts list (in ✨),
+    # SBP/Card keep existing token-based amounts
+    allowed = ALLOWED_STAR_AMOUNTS if m == "stars" else ALLOWED_AMOUNTS
+    for tokens in sorted(allowed):
         try:
             url = make_hub_link(m, tokens)
         except Exception:
@@ -166,14 +169,17 @@ async def noop_callback(callback: CallbackQuery) -> None:
 def topup_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="1 ✨", callback_data="topup_invoice:1")],
             [
-                InlineKeyboardButton(text="15 ✨", callback_data="topup_invoice:15"),
-                InlineKeyboardButton(text="30 ✨", callback_data="topup_invoice:30"),
+                InlineKeyboardButton(text="10 ✨", callback_data="topup_invoice:10"),
+                InlineKeyboardButton(text="20 ✨", callback_data="topup_invoice:20"),
             ],
             [
+                InlineKeyboardButton(text="30 ✨", callback_data="topup_invoice:30"),
                 InlineKeyboardButton(text="50 ✨", callback_data="topup_invoice:50"),
+            ],
+            [
                 InlineKeyboardButton(text="100 ✨", callback_data="topup_invoice:100"),
+                InlineKeyboardButton(text="200 ✨", callback_data="topup_invoice:200"),
             ],
         ]
     )
@@ -182,11 +188,13 @@ def topup_keyboard() -> InlineKeyboardMarkup:
 async def _send_invoice(message: Message, amount: int) -> None:
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    prices = [LabeledPrice(label=t(lang, "topup.invoice_label", amount=amount), amount=amount)]
+    # Stars conversion: 2 ✨ = 1 token. Display credited tokens in label/desc.
+    credited_tokens = amount // 2
+    prices = [LabeledPrice(label=t(lang, "topup.invoice_label", amount=credited_tokens), amount=amount)]
     await message.bot.send_invoice(
         chat_id=message.chat.id,
         title=t(lang, "topup.invoice_title"),
-        description=t(lang, "topup.invoice_desc", amount=amount),
+        description=t(lang, "topup.invoice_desc", amount=credited_tokens),
         payload=f"topup:{amount}",
         provider_token="",  # Stars для цифровых товаров — без провайдера
         currency="XTR",
@@ -237,10 +245,12 @@ async def process_successful_payment(message: Message) -> None:
         return
 
     amount = int(sp.total_amount)
+    # 2 ✨ = 1 token
+    credited_tokens = amount // 2
     current = await _db.get_token_balance(message.from_user.id)
-    new_balance = current + amount
+    new_balance = current + credited_tokens
     await _db.set_token_balance(message.from_user.id, new_balance)
 
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    await message.answer(t(lang, "topup.success", amount=amount, balance=new_balance))
+    await message.answer(t(lang, "topup.success", amount=credited_tokens, balance=new_balance))
