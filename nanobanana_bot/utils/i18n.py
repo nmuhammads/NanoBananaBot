@@ -22,6 +22,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.generate": "Сгенерировать 🖼️",
         "kb.avatars": "Мои аватары 📸",
         "kb.new_generation": "Новая генерация 🖼️",
+        "kb.repeat_generation": "Повторить генерацию 🔁",
         "kb.start": "Главное меню",
 
         # Start
@@ -156,6 +157,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.done_text": "✨ Готово! Остаток: {balance}\nСоотношение: {ratio}",
         "gen.result_caption": "Результат ✨",
         "gen.task_accepted": "Задача отправлена. Результат скоро будет здесь ✨",
+        "gen.repeat_not_found": "Нет недавней успешной генерации для повторения.",
         # Failure handling
         "gen.failed.prompt_too_long": (
             "❗️ Промпт слишком длинный. Максимум 2500 символов.\n"
@@ -199,6 +201,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.generate": "Generate 🖼️",
         "kb.avatars": "My Avatars 📸",
         "kb.new_generation": "New generation 🖼️",
+        "kb.repeat_generation": "Repeat generation 🔁",
         "kb.start": "Main menu",
 
         # Start
@@ -333,6 +336,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.done_text": "✨ Done! Balance left: {balance}\nAspect ratio: {ratio}",
         "gen.result_caption": "Result ✨",
         "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
+        "gen.repeat_not_found": "No recent successful generation to repeat.",
         # Failure handling
         "gen.failed.prompt_too_long": (
             "❗️ Prompt too long. Max 2500 characters.\n"

@@ -17,6 +17,7 @@ from .config import load_settings
 from .database import Database
 from .utils.seedream import SeedreamClient
 from .utils.i18n import t, normalize_lang
+from .cache import Cache
 from .middlewares.logging import SimpleLoggingMiddleware
 from .middlewares.rate_limit import RateLimitMiddleware
 from .handlers import start as start_handler
@@ -48,6 +49,7 @@ client = SeedreamClient(
     timeout_seconds=settings.request_timeout_seconds,
     callback_url=(settings.webhook_url.rstrip("/") + "/seedream-callback") if settings.webhook_url else None,
 )
+cache = Cache(settings.redis_url)
 
 # Middlewares
 dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("seedream.middleware")))
@@ -62,6 +64,7 @@ generate_handler.setup(
     db,
     settings.seedream_model_t2i,
     settings.seedream_model_edit,
+    cache,
 )
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
@@ -373,12 +376,21 @@ async def seedream_callback(request: Request) -> dict:
                     lang = normalize_lang(rows[0].get("language_code") if rows else None)
                 except Exception:
                     lang = "ru"
+                # Сохраним мета‑параметры последней успешной генерации (если найдены по попытке)
+                try:
+                    if user_id is not None and generation_id is not None:
+                        meta = await cache.get_attempt_meta(int(user_id), int(generation_id))
+                        if meta:
+                            await cache.set_last_success_meta(int(user_id), meta)
+                except Exception as e:
+                    logger.warning("Failed to persist last success meta for user=%s gen_id=%s: %s", user_id, generation_id, e)
                 await bot.send_document(
                     chat_id=int(user_id),
                     document=URLInputFile(image_url, filename=_guess_filename(image_url)),
                     caption=t(lang, "gen.result_caption"),
                     reply_markup=ReplyKeyboardMarkup(
                         keyboard=[
+                            [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
                             [KeyboardButton(text=t(lang, "kb.new_generation"))],
                             [KeyboardButton(text=t(lang, "kb.start"))],
                         ],

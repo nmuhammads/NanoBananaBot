@@ -18,6 +18,7 @@ from aiogram.fsm.context import FSMContext
 from ..utils.seedream import SeedreamClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
+from ..cache import Cache
 import logging
 
 
@@ -25,6 +26,7 @@ router = Router(name="generate")
 
 _client: SeedreamClient | None = None
 _db: Database | None = None
+_cache: Cache | None = None
 _seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
 _seedream_model_edit: str = "bytedance/seedream-v4-edit"
 _logger = logging.getLogger("seedream.generate")
@@ -54,10 +56,11 @@ def _guess_filename(url: str) -> str:
     return "seedream.png"
 
 
-def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None) -> None:
-    global _client, _db, _seedream_model_t2i, _seedream_model_edit
+def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None, cache: Cache | None = None) -> None:
+    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _cache
     _client = client
     _db = database
+    _cache = cache
     if isinstance(seedream_model_t2i, str) and seedream_model_t2i.strip():
         _seedream_model_t2i = seedream_model_t2i.strip()
     if isinstance(seedream_model_edit, str) and seedream_model_edit.strip():
@@ -693,6 +696,25 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     # Выбор модели: Seedream V4 — для текстовой генерации и редактирования (из конфига)
     model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
 
+    # Сохраним параметры попытки генерации в кэше для возможного повторения
+    try:
+        if _cache is not None and gen_id is not None:
+            attempt_meta = {
+                "prompt": prompt,
+                "gen_type": gen_type,
+                "ratio": ratio,
+                "image_resolution": image_resolution,
+                "max_images": max_images,
+                "photos": photos,
+                "avatar_file_path": avatar_file_path,
+                "selected_avatars": selected_avatars,
+                "image_size": image_size,
+                "model": model,
+            }
+            await _cache.set_attempt_meta(user_id, int(gen_id), attempt_meta)
+    except Exception as e:
+        _logger.warning("Failed to cache attempt meta user=%s gen_id=%s: %s", user_id, gen_id, e)
+
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели)
     image_urls = []
     if len(photos) > 0:
@@ -780,12 +802,206 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         caption=t(lang, "gen.result_caption"),
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[
+                [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
                 [KeyboardButton(text=t(lang, "kb.new_generation"))],
                 [KeyboardButton(text=t(lang, "kb.start"))],
             ],
             resize_keyboard=True,
         ),
     )
+    # Обновим кэш последней успешной генерации
+    try:
+        if _cache is not None and gen_id is not None:
+            await _cache.set_last_success_meta(user_id, {
+                "prompt": prompt,
+                "gen_type": gen_type,
+                "ratio": ratio,
+                "image_resolution": image_resolution,
+                "max_images": max_images,
+                "photos": photos,
+                "avatar_file_path": avatar_file_path,
+                "selected_avatars": selected_avatars,
+                "image_size": image_size,
+                "model": model,
+            })
+    except Exception as e:
+        _logger.warning("Failed to cache last success meta user=%s gen_id=%s: %s", user_id, gen_id, e)
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
+
+@router.message((F.text == t("ru", "kb.repeat_generation")) | (F.text == t("en", "kb.repeat_generation")))
+async def repeat_last_generation(message: Message, state: FSMContext) -> None:
+    """Повторяет последнюю успешную генерацию с теми же параметрами и данными."""
+    if _client is None or _db is None:
+        return
+    user_id = int(message.from_user.id)
+    # Определим язык
+    try:
+        res = _db.client.table("users").select("language_code").eq("user_id", user_id).limit(1).execute()
+        rows = getattr(res, "data", []) or []
+        lang = normalize_lang(rows[0].get("language_code") if rows else None)
+    except Exception:
+        lang = normalize_lang(message.from_user.language_code)
+
+    # Проверим наличие мета‑параметров последней успешной генерации в кэше
+    meta = None
+    try:
+        if _cache is not None:
+            meta = await _cache.get_last_success_meta(user_id)
+    except Exception as e:
+        _logger.warning("Failed to fetch last success meta user=%s: %s", user_id, e)
+
+    if not isinstance(meta, dict):
+        await message.answer(
+            t(lang, "gen.repeat_not_found"),
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text=t(lang, "kb.new_generation"))], [KeyboardButton(text=t(lang, "kb.start"))]],
+                resize_keyboard=True,
+            ),
+        )
+        return
+
+    prompt = meta.get("prompt") or ""
+    gen_type = meta.get("gen_type") or "text"
+    ratio = meta.get("ratio") or "auto"
+    image_resolution = meta.get("image_resolution") or "2K"
+    try:
+        max_images = int(meta.get("max_images") or 1)
+    except Exception:
+        max_images = 1
+    photos = meta.get("photos") or []
+    avatar_file_path = meta.get("avatar_file_path")
+    selected_avatars = meta.get("selected_avatars") or []
+
+    # Проверка токенов
+    balance = await _db.get_token_balance(user_id)
+    if balance < 4:
+        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
+        return
+
+    # Трекинг новой генерации
+    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}"
+    generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]")
+    gen_id = generation.get("id")
+
+    # Seedream image_size
+    ratio_map = {
+        "1:1": "square_hd",
+        "3:4": "portrait_4_3",
+        "4:3": "landscape_4_3",
+        "9:16": "portrait_16_9",
+        "16:9": "landscape_16_9",
+        "21:9": "landscape_21_9",
+        "3:2": "landscape_3_2",
+        "2:3": "portrait_3_2",
+    }
+    image_size = ratio_map.get(ratio) if ratio in ratio_map else None
+
+    # Выбор модели
+    model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
+
+    # Конвертация фото и аватаров в URL
+    image_urls = []
+    if len(photos) > 0:
+        for pid in photos:
+            try:
+                f = await message.bot.get_file(pid)
+                file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{f.file_path}"
+                image_urls.append(file_url)
+            except Exception as e:
+                _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+    if isinstance(selected_avatars, list) and len(selected_avatars) > 0:
+        for a in selected_avatars:
+            fp = a.get("file_path")
+            if not fp:
+                continue
+            try:
+                signed_url = await _db.create_signed_url(fp, expires_in=600)
+                if signed_url:
+                    image_urls.append(signed_url)
+            except Exception as e:
+                _logger.warning("Failed to create signed URL for avatar %s: %s", fp, e)
+    elif isinstance(avatar_file_path, str) and avatar_file_path:
+        try:
+            signed_url = await _db.create_signed_url(avatar_file_path, expires_in=600)
+            if signed_url:
+                image_urls.append(signed_url)
+        except Exception as e:
+            _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
+
+    # Сохраняем мета попытки для связывания с callback
+    try:
+        if _cache is not None and gen_id is not None:
+            await _cache.set_attempt_meta(user_id, int(gen_id), {
+                "prompt": prompt,
+                "gen_type": gen_type,
+                "ratio": ratio,
+                "image_resolution": image_resolution,
+                "max_images": max_images,
+                "photos": photos,
+                "avatar_file_path": avatar_file_path,
+                "selected_avatars": selected_avatars,
+                "image_size": image_size,
+                "model": model,
+            })
+    except Exception as e:
+        _logger.warning("Failed to cache attempt meta for repeat user=%s gen_id=%s: %s", user_id, gen_id, e)
+
+    # Вызов API
+    try:
+        image_url = await _client.generate_image(
+            prompt=prompt,
+            model=model,
+            image_urls=image_urls or None,
+            image_size=image_size,
+            image_resolution=image_resolution,
+            max_images=max_images,
+            meta={"generationId": gen_id, "userId": user_id},
+        )
+    except Exception as e:
+        msg = str(e)
+        if "awaiting callback" in msg:
+            # Списание токенов
+            current_balance = await _db.get_token_balance(user_id)
+            new_balance = max(0, int(current_balance) - 4)
+            await _db.set_token_balance(user_id, new_balance)
+            await message.answer(t(lang, "gen.task_accepted"))
+            return
+
+        if gen_id is not None:
+            await _db.mark_generation_failed(gen_id, str(e))
+        await message.answer(f"Ошибка генерации: {e}")
+        _logger.exception("Repeat generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
+        return
+
+    # Синхронный результат: списываем токены и отправляем картинку
+    current_balance = await _db.get_token_balance(user_id)
+    new_balance = max(0, int(current_balance) - 4)
+    await _db.set_token_balance(user_id, new_balance)
+    if gen_id is not None:
+        await _db.mark_generation_completed(gen_id, image_url)
+    await message.answer_document(
+        document=URLInputFile(image_url, filename=_guess_filename(image_url)),
+        caption=t(lang, "gen.result_caption"),
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text=t(lang, "kb.repeat_generation"))], [KeyboardButton(text=t(lang, "kb.new_generation"))], [KeyboardButton(text=t(lang, "kb.start"))]],
+            resize_keyboard=True,
+        ),
+    )
+    try:
+        if _cache is not None and gen_id is not None:
+            await _cache.set_last_success_meta(user_id, {
+                "prompt": prompt,
+                "gen_type": gen_type,
+                "ratio": ratio,
+                "image_resolution": image_resolution,
+                "max_images": max_images,
+                "photos": photos,
+                "avatar_file_path": avatar_file_path,
+                "selected_avatars": selected_avatars,
+                "image_size": image_size,
+                "model": model,
+            })
+    except Exception as e:
+        _logger.warning("Failed to cache last success meta (repeat) user=%s gen_id=%s: %s", user_id, gen_id, e)
