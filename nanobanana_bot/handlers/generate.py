@@ -65,10 +65,26 @@ def ratio_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
         "4:5",
         "21:9",
     ]
+    emoji_map: dict[str, str] = {
+        "1:1": "◻️",
+        "9:16": "📱",
+        "16:9": "📺",
+        "3:4": "📱",
+        "4:3": "🖼️",
+        "3:2": "🖼️",
+        "2:3": "📱",
+        "5:4": "🖼️",
+        "4:5": "📱",
+        "21:9": "🎬",
+    }
     rows = []
     row: list[InlineKeyboardButton] = []
     for i, label in enumerate(labels):
-        shown = t(lang, "gen.ratio.auto") if label == "auto" else f"📐 {label}"
+        if label == "auto":
+            shown = f"{t(lang, 'gen.ratio.auto')} ✨"
+        else:
+            em = emoji_map.get(label, "📐")
+            shown = f"{em} {label}"
         row.append(InlineKeyboardButton(text=shown, callback_data=f"ratio:{label}"))
         if (i + 1) % 3 == 0:
             rows.append(row)
