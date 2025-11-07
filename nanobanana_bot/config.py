@@ -68,8 +68,18 @@ def load_settings() -> Settings:
             tribute_product_map = {}
     request_timeout_seconds = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
     # Webhook
-    webhook_url = os.getenv("WEBHOOK_URL")
-    webhook_path = os.getenv("WEBHOOK_PATH", "/webhook")
+    # Санитизация URL и пути вебхука: убираем пробелы, запятые и конечные слеши
+    webhook_url_raw = os.getenv("WEBHOOK_URL")
+    webhook_url = webhook_url_raw.strip() if webhook_url_raw else None
+    if webhook_url:
+        webhook_url = webhook_url.rstrip(",/ ")
+
+    webhook_path_raw = os.getenv("WEBHOOK_PATH", "/webhook")
+    webhook_path = (webhook_path_raw or "/webhook").strip()
+    # Гарантируем ведущий слеш и убираем возможную запятую в конце
+    if not webhook_path.startswith("/"):
+        webhook_path = "/" + webhook_path
+    webhook_path = webhook_path.rstrip(" ,")
     webhook_secret_token = os.getenv("WEBHOOK_SECRET_TOKEN")
 
     if not bot_token:
