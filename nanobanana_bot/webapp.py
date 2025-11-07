@@ -72,6 +72,43 @@ dp.include_router(prices_handler.router)
 app = FastAPI(title="NanoBananaBot Webhook")
 
 
+async def _setup_webhook_with_retries(
+    bot: Bot,
+    url: str,
+    secret_token: str | None,
+    allowed_updates: list[str],
+    timeout: float,
+    attempts: int = 3,
+    base_delay: float = 10.0,
+) -> None:
+    """Attempt to set webhook in the background with retries without blocking startup."""
+    delay = base_delay
+    for i in range(1, attempts + 1):
+        try:
+            await asyncio.wait_for(
+                bot.set_webhook(
+                    url=url,
+                    secret_token=secret_token,
+                    allowed_updates=allowed_updates,
+                ),
+                timeout=timeout,
+            )
+            logger.info("Webhook set on retry %s: %s", i, url)
+            return
+        except asyncio.TimeoutError:
+            logger.warning("Retry %s timed out setting webhook", i)
+        except asyncio.CancelledError:
+            logger.warning("Retry %s cancelled while setting webhook", i)
+        except Exception as e:
+            logger.warning("Retry %s failed to set webhook: %s", i, e)
+        try:
+            await asyncio.sleep(delay)
+        except Exception:
+            pass
+        delay *= 2
+    logger.error("Exhausted webhook setup retries; continuing without webhook")
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     # Ensure webhook URL is provided for webhook mode
@@ -101,10 +138,51 @@ async def on_startup() -> None:
             timeout=settings.request_timeout_seconds,
         )
         logger.info("Webhook set: %s, allowed=%s", url, ["message", "callback_query", "pre_checkout_query"])
-    except asyncio.TimeoutError:
-        logger.error("Timed out setting webhook within %ss; continuing startup without webhook", settings.request_timeout_seconds)
+    except asyncio.TimeoutError as e:
+        logger.error("Timed out setting webhook within %ss; scheduling background retries", settings.request_timeout_seconds)
+        try:
+            asyncio.create_task(
+                _setup_webhook_with_retries(
+                    bot,
+                    url,
+                    settings.webhook_secret_token,
+                    ["message", "callback_query", "pre_checkout_query"],
+                    settings.request_timeout_seconds,
+                )
+            )
+            logger.info("Webhook background retries scheduled")
+        except Exception as sched_err:
+            logger.warning("Failed to schedule webhook retries: %s", sched_err)
+    except asyncio.CancelledError as e:
+        logger.error("Webhook setup cancelled during startup; scheduling background retries")
+        try:
+            asyncio.create_task(
+                _setup_webhook_with_retries(
+                    bot,
+                    url,
+                    settings.webhook_secret_token,
+                    ["message", "callback_query", "pre_checkout_query"],
+                    settings.request_timeout_seconds,
+                )
+            )
+            logger.info("Webhook background retries scheduled")
+        except Exception as sched_err:
+            logger.warning("Failed to schedule webhook retries: %s", sched_err)
     except Exception as e:
         logger.warning("Failed to set webhook: %s", e)
+        try:
+            asyncio.create_task(
+                _setup_webhook_with_retries(
+                    bot,
+                    url,
+                    settings.webhook_secret_token,
+                    ["message", "callback_query", "pre_checkout_query"],
+                    settings.request_timeout_seconds,
+                )
+            )
+            logger.info("Webhook background retries scheduled")
+        except Exception as sched_err:
+            logger.warning("Failed to schedule webhook retries: %s", sched_err)
 
     # Register bot commands for user convenience
     try:
