@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, Header, HTTPException
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Update, BotCommand
+from aiogram.types import Update, BotCommand, BufferedInputFile, URLInputFile, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
@@ -217,7 +217,7 @@ async def nanobanana_callback(request: Request) -> dict:
                 except Exception as e:
                     logger.warning("Failed to fetch generation user_id id=%s: %s", generation_id, e)
 
-        # If we have user_id, send photo to the user chat
+        # If we have user_id, send image to the user chat as a document to preserve quality
         if user_id is not None:
             try:
                 # Определим язык пользователя для подписи
@@ -227,7 +227,32 @@ async def nanobanana_callback(request: Request) -> dict:
                     lang = normalize_lang(rows[0].get("language_code") if rows else None)
                 except Exception:
                     lang = "ru"
-                await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=t(lang, "gen.result_caption"))
+                # Отправим изображение как документ (URLInputFile) без изменения расширения
+                from urllib.parse import urlparse
+                filename = "image"
+                try:
+                    path = urlparse(str(image_url)).path
+                    if path:
+                        base = path.rsplit("/", 1)[-1]
+                        if base:
+                            filename = base
+                except Exception:
+                    pass
+
+                try:
+                    reply_markup = ReplyKeyboardMarkup(
+                        keyboard=[
+                            [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
+                            [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
+                        ],
+                        resize_keyboard=True,
+                    )
+
+                    file = URLInputFile(url=str(image_url), filename=filename)
+                    await bot.send_document(chat_id=int(user_id), document=file, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
+                except Exception as e_doc:
+                    logger.warning("Failed to send as document, fallback to photo: %s", e_doc)
+                    await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
             except Exception as e:
                 logger.warning("Failed to send photo to user %s: %s", user_id, e)
         else:

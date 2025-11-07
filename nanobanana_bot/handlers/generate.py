@@ -5,6 +5,10 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     CallbackQuery,
+    BufferedInputFile,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    URLInputFile,
 )
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
@@ -13,6 +17,7 @@ from ..utils.nanobanana import NanoBananaClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
 import logging
+import httpx
 
 
 router = Router(name="generate")
@@ -46,7 +51,7 @@ def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
-def ratio_keyboard() -> InlineKeyboardMarkup:
+def ratio_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     labels = [
         "auto",
         "1:1",
@@ -63,7 +68,8 @@ def ratio_keyboard() -> InlineKeyboardMarkup:
     rows = []
     row: list[InlineKeyboardButton] = []
     for i, label in enumerate(labels):
-        row.append(InlineKeyboardButton(text=label, callback_data=f"ratio:{label}"))
+        shown = t(lang, "gen.ratio.auto") if label == "auto" else f"📐 {label}"
+        row.append(InlineKeyboardButton(text=shown, callback_data=f"ratio:{label}"))
         if (i + 1) % 3 == 0:
             rows.append(row)
             row = []
@@ -78,6 +84,16 @@ def confirm_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=t(lang, "gen.confirm.ok"), callback_data="confirm:ok")],
             [InlineKeyboardButton(text=t(lang, "gen.confirm.cancel"), callback_data="confirm:cancel")],
         ]
+    )
+
+
+def post_result_reply_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
+            [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
+        ],
+        resize_keyboard=True,
     )
 
 
@@ -167,7 +183,7 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     lang = data.get("lang")
     if gen_type == "text":
         await state.set_state(GenerateStates.choosing_ratio)
-        await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
+        await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
         return
     elif gen_type == "text_photo":
         await state.update_data(photos_needed=1, photos=[])
@@ -297,7 +313,7 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
         return
     # Обычные режимы — выбор соотношения сторон
     await state.set_state(GenerateStates.choosing_ratio)
-    await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
+    await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos))
@@ -469,8 +485,23 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     ) if callback.message.photo else await callback.message.edit_text(
         t(lang, "gen.done_text", balance=new_balance, ratio=ratio)
     )
-    # Отправим изображение отдельным сообщением
-    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"))
+    # Отправим изображение как документ (URLInputFile) для сохранения качества
+    try:
+        from urllib.parse import urlparse
+        filename = "image"
+        try:
+            path = urlparse(str(image_url)).path
+            if path:
+                base = path.rsplit("/", 1)[-1]
+                if base:
+                    filename = base
+        except Exception:
+            pass
+        file = URLInputFile(url=str(image_url), filename=filename)
+        await callback.message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+    except Exception as e:
+        _logger.warning("Failed to send document, falling back to photo: %s", e)
+        await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
