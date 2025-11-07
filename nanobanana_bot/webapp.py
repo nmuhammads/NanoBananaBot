@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import hmac
 import hashlib
 import json
@@ -83,16 +84,27 @@ async def on_startup() -> None:
 
     # Reset previous webhook to avoid conflicts and drop pending updates
     try:
-        await bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.wait_for(
+            bot.delete_webhook(drop_pending_updates=True),
+            timeout=settings.request_timeout_seconds,
+        )
     except Exception as e:
         logger.warning("Failed to delete old webhook: %s", e)
 
-    await bot.set_webhook(
-        url=url,
-        secret_token=settings.webhook_secret_token,
-        allowed_updates=["message", "callback_query", "pre_checkout_query"],
-    )
-    logger.info("Webhook set: %s, allowed=%s", url, ["message", "callback_query", "pre_checkout_query"])
+    try:
+        await asyncio.wait_for(
+            bot.set_webhook(
+                url=url,
+                secret_token=settings.webhook_secret_token,
+                allowed_updates=["message", "callback_query", "pre_checkout_query"],
+            ),
+            timeout=settings.request_timeout_seconds,
+        )
+        logger.info("Webhook set: %s, allowed=%s", url, ["message", "callback_query", "pre_checkout_query"])
+    except asyncio.TimeoutError:
+        logger.error("Timed out setting webhook within %ss; continuing startup without webhook", settings.request_timeout_seconds)
+    except Exception as e:
+        logger.warning("Failed to set webhook: %s", e)
 
     # Register bot commands for user convenience
     try:
