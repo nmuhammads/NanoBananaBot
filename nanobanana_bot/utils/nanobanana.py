@@ -15,7 +15,11 @@ class NanoBananaClient:
         self.base_url = base_url.rstrip(",/ ")
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
-        self.callback_url = callback_url
+        # Sanitize callback URL: trim spaces/backticks and trailing commas/slashes
+        self.callback_url = (
+            str(callback_url).strip().strip("`").rstrip(",/ ")
+            if callback_url else None
+        )
         self._logger = logging.getLogger("nanobanana.api")
 
     async def generate_image(
@@ -49,7 +53,12 @@ class NanoBananaClient:
         if image_size:
             input_obj["image_size"] = image_size
         if image_urls:
-            input_obj["image_urls"] = image_urls
+            # Sanitize URLs: trim spaces/backticks/quotes
+            cleaned_urls: List[str] = []
+            for u in image_urls:
+                su = str(u).strip().strip("`").strip('"').strip("'")
+                cleaned_urls.append(su)
+            input_obj["image_urls"] = cleaned_urls
         payload["input"] = input_obj
         if meta:
             payload["meta"] = meta

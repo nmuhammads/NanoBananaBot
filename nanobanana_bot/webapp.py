@@ -198,6 +198,48 @@ async def nanobanana_callback(request: Request) -> dict:
     except Exception as e:
         logger.warning("General parsing error for KIE callback: %s", e)
 
+    # Минимальная обработка ошибок: если провайдер вернул fail/неуспешный код, уведомим пользователя
+    try:
+        state_val = (data.get("data") or {}).get("state") or data.get("state")
+        code_val = data.get("code")
+        is_failed = (str(state_val).lower() in {"fail", "failed"}) or (isinstance(code_val, int) and code_val not in (200, 0))
+    except Exception:
+        is_failed = False
+
+    if is_failed:
+        fail_msg = ((data.get("data") or {}).get("failMsg")) or data.get("msg") or "Ошибка генерации"
+        # Обновим статус генерации в базе, если есть id
+        if generation_id is not None:
+            try:
+                await db.mark_generation_failed(int(generation_id), str(fail_msg))
+            except Exception as e:
+                logger.warning("Failed to mark generation failed id=%s: %s", generation_id, e)
+
+        # Уведомим пользователя о неудаче
+        if user_id is not None:
+            try:
+                try:
+                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
+                    rows = getattr(res, "data", []) or []
+                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                except Exception:
+                    lang = "ru"
+
+                reply_markup = ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
+                        [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
+                    ],
+                    resize_keyboard=True,
+                )
+                await bot.send_message(chat_id=int(user_id), text=f"Ошибка генерации: {fail_msg}", reply_markup=reply_markup)
+            except Exception as e:
+                logger.warning("Failed to notify user %s of failure: %s", user_id, e)
+        else:
+            logger.info("Failure callback without user_id; marked generation failed")
+
+        return {"ok": True}
+
     if not image_url:
         logger.warning("NanoBanana callback missing image url after parsing: %s", data)
         return {"ok": False, "error": "missing image url"}
