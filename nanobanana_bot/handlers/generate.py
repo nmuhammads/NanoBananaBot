@@ -334,17 +334,31 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
 
 @router.message(StateFilter(GenerateStates.waiting_photos))
 async def require_photo(message: Message, state: FSMContext) -> None:
+    # Если пользователь нажал «Сгенерировать 🖼️» или «Новая генерация 🆕» — начинаем заново
+    text = (message.text or "").strip()
     st = await state.get_data()
+    lang = st.get("lang")
+    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
+        await start_generate(message, state)
+        return
+    # Если пользователь открыл главное меню или ввёл /start — не мешаем обработчику старт
+    if text in {t("ru", "kb.start"), t("en", "kb.start")} or text.startswith("/start"):
+        # Позволим обработчику /start очистить состояние и показать меню
+        return
     photos = list(st.get("photos", []))
     photos_needed = int(st.get("photos_needed", 1))
     next_idx = min(len(photos) + 1, photos_needed)
-    lang = st.get("lang")
     await message.answer(t(lang, "gen.require_photo", next=next_idx, total=photos_needed))
 
 
 # Текстовый запуск генерации с нижней клавиатуры
 @router.message((F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
 async def start_generate_text(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state)
+
+# Запуск генерации по кнопке «Новая генерация 🆕»
+@router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")))
+async def start_generate_text_new(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
 
@@ -517,7 +531,142 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
     except Exception as e:
         _logger.warning("Failed to send document, falling back to photo: %s", e)
-        await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
+
+# Повтор последней успешной генерации (только текстовая)
+@router.message((F.text == t("ru", "kb.repeat_generation")) | (F.text == t("en", "kb.repeat_generation")))
+async def repeat_last_generation(message: Message, state: FSMContext) -> None:
+    assert _client is not None and _db is not None
+    user_id = int(message.from_user.id)
+    # Определим язык пользователя
+    user = await _db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+
+    # Проверим баланс
+    balance = await _db.get_token_balance(user_id)
+    if balance < 4:
+        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
+        return
+
+    # Получим последнюю завершённую генерацию
+    last = await _db.get_last_completed_generation(user_id)
+    if not last:
+        await message.answer(t(lang, "gen.repeat_not_found"))
+        return
+
+    stored_prompt = str(last.get("prompt") or "").strip()
+    # Извлечём базовый промпт и параметры из суффикса вида: [type=...; ratio=...; photos=N]
+    base_prompt = stored_prompt
+    payload = ""
+    try:
+        i = stored_prompt.rfind("[")
+        j = stored_prompt.rfind("]")
+        if i != -1 and j != -1 and j > i:
+            base_prompt = stored_prompt[:i].strip()
+            payload = stored_prompt[i + 1 : j].strip()
+    except Exception:
+        base_prompt = stored_prompt
+
+    type_val: str | None = None
+    ratio_val: str = "auto"
+    photos_count: int = 0
+    try:
+        for part in [p for p in payload.split(";") if p.strip()]:
+            k, _, v = part.partition("=")
+            key = k.strip().lower()
+            val = v.strip()
+            if key == "type":
+                type_val = val
+            elif key == "ratio":
+                ratio_val = val
+            elif key == "photos":
+                try:
+                    photos_count = int(val)
+                except Exception:
+                    photos_count = 0
+    except Exception:
+        pass
+
+    # Поддерживаем только текстовые генерации без фото
+    if (type_val and type_val != "text") or photos_count > 0:
+        await message.answer(t(lang, "gen.repeat_unsupported"))
+        return
+
+    # Создадим запись генерации
+    payload_desc = f"type=text; ratio={ratio_val}; photos=0"
+    generation = await _db.create_generation(user_id, f"{base_prompt} [{payload_desc}]")
+    gen_id = generation.get("id")
+    _logger.info("Repeat generation created id=%s user=%s ratio=%s", gen_id, user_id, ratio_val)
+
+    # Подготовка параметров для KIE API
+    ratio_map = {
+        "1:1": "1:1",
+        "3:4": "3:4",
+        "4:3": "4:3",
+        "9:16": "9:16",
+        "16:9": "16:9",
+    }
+    image_size = ratio_map.get(ratio_val) if ratio_val in ratio_map else None
+    model = "google/nano-banana"  # только текст
+
+    try:
+        _logger.info("Calling KIE API (repeat) user=%s gen_id=%s model=%s size=%s", user_id, gen_id, model, image_size)
+        image_url = await _client.generate_image(
+            prompt=base_prompt,
+            model=model,
+            image_urls=None,
+            image_size=image_size,
+            output_format="png",
+            meta={"generationId": gen_id, "userId": user_id},
+        )
+    except Exception as e:
+        msg = str(e)
+        if "awaiting callback" in msg:
+            # Списание токенов при асинхронном принятии
+            current_balance = await _db.get_token_balance(user_id)
+            new_balance = max(0, int(current_balance) - 4)
+            await _db.set_token_balance(user_id, new_balance)
+            _logger.info("Debited 4 tokens (async repeat): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            await message.answer(t(lang, "gen.task_accepted"))
+            await state.clear()
+            return
+        if gen_id is not None:
+            await _db.mark_generation_failed(gen_id, str(e))
+        await message.answer(f"Ошибка генерации: {e}")
+        _logger.exception("Repeat generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
+        await state.clear()
+        return
+
+    # Списание токенов и отметка завершения (синхронно)
+    current_balance = await _db.get_token_balance(user_id)
+    new_balance = max(0, int(current_balance) - 4)
+    await _db.set_token_balance(user_id, new_balance)
+    _logger.info("Debited 4 tokens (sync repeat): user=%s balance %s->%s", user_id, current_balance, new_balance)
+
+    if gen_id is not None:
+        await _db.mark_generation_completed(gen_id, image_url)
+
+    # Сообщение «Готово!»
+    await message.answer(t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val))
+    # Отправим изображение как документ, при ошибке — фото
+    try:
+        from urllib.parse import urlparse
+        filename = "image"
+        try:
+            path = urlparse(str(image_url)).path
+            if path:
+                base = path.rsplit("/", 1)[-1]
+                if base:
+                    filename = base
+        except Exception:
+            pass
+        file = URLInputFile(url=str(image_url), filename=filename)
+        await message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+    except Exception as e:
+        _logger.warning("Failed to send document (repeat), falling back to photo: %s", e)
+        await message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+    await state.clear()
+    _logger.info("Repeat generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)

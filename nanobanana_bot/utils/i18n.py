@@ -134,6 +134,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.result_caption": "Результат генерации",
         "gen.task_accepted": "Задача отправлена в генерацию. Результат придёт в этом чате чуть позже.",
         "gen.unknown_type": "Неизвестный тип генерации. Начните заново: /generate",
+        "gen.repeat_not_found": "Повтор невозможен: нет предыдущей генерации.",
+        "gen.repeat_unsupported": "Повтор работает только для текстовых генераций без изображений.",
     },
     "en": {
         # Keyboard labels
@@ -254,6 +256,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.result_caption": "Generation result",
         "gen.task_accepted": "Task accepted. The result will arrive here shortly.",
         "gen.unknown_type": "Unknown generation type. Start over: /generate",
+        "gen.repeat_not_found": "Cannot repeat: no previous generation found.",
+        "gen.repeat_unsupported": "Repeat only supported for text-only generations.",
     },
 }
 

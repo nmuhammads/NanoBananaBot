@@ -83,3 +83,17 @@ class Database:
         self.client.table("generations").update(
             {"status": "failed", "error_message": error_message, "completed_at": completed_at}
         ).eq("id", generation_id).execute()
+
+    async def get_last_completed_generation(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Возвращает последнюю успешно завершённую генерацию пользователя."""
+        res = (
+            self.client.table("generations")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .order("id", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", []) or []
+        return rows[0] if rows else None

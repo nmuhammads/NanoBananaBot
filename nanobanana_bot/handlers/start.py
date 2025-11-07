@@ -113,3 +113,9 @@ async def set_lang(callback: CallbackQuery) -> None:
         t(lang, "start.welcome", name=html.bold(callback.from_user.full_name), balance=balance),
         reply_markup=keyboard,
     )
+
+# Обработка текстовой кнопки "Старт ⏮️" из ReplyKeyboard
+@router.message(F.text.casefold().in_({"старт ⏮️", "start ⏮️"}))
+async def start_button(message: Message) -> None:
+    # Переиспользуем основной хэндлер /start
+    await start(message)
