@@ -16,6 +16,7 @@ from aiogram.fsm.context import FSMContext
 from ..utils.nanobanana import NanoBananaClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
+from ..cache import Cache
 import logging
 import httpx
 
@@ -24,13 +25,14 @@ router = Router(name="generate")
 
 _client: NanoBananaClient | None = None
 _db: Database | None = None
+_cache: Cache | None = None
 _logger = logging.getLogger("nanobanana.generate")
 
-
-def setup(client: NanoBananaClient, database: Database) -> None:
-    global _client, _db
+def setup(client: NanoBananaClient, database: Database, cache: Cache | None = None) -> None:
+    global _client, _db, _cache
     _client = client
     _db = database
+    _cache = cache
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
@@ -467,6 +469,26 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
 
     try:
+        # Сохраним точный payload запроса в кеш для последующего повтора
+        try:
+            if _cache and gen_id is not None:
+                selected_photo_count = st.get("selected_photo_count")
+                payload = {
+                    "prompt": prompt,
+                    "gen_type": gen_type,
+                    "ratio": ratio,
+                    "image_resolution": None,
+                    "max_images": selected_photo_count if isinstance(selected_photo_count, int) else 1,
+                    "photos": photos,
+                    "avatar_file_path": st.get("avatar_file_path"),
+                    "selected_avatars": st.get("selected_avatars", []),
+                    "image_size": image_size,
+                    "model": model,
+                }
+                await _cache.set_last_generation_attempt(user_id, int(gen_id), payload)
+        except Exception:
+            _logger.debug("Failed to store last generation payload in cache", exc_info=True)
+
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
         image_url = await _client.generate_image(
             prompt=prompt,

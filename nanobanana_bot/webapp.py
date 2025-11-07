@@ -12,6 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
 from .database import Database
+from .cache import Cache
 from .utils.nanobanana import NanoBananaClient
 from .utils.i18n import t, normalize_lang
 from .middlewares.logging import SimpleLoggingMiddleware
@@ -38,6 +39,7 @@ dp = Dispatcher(storage=MemoryStorage())
 
 # Shared services
 db = Database(settings.supabase_url, settings.supabase_key)
+cache = Cache(settings.redis_url)
 client = NanoBananaClient(
     base_url=settings.nanobanana_api_base,
     api_key=settings.nanobanana_api_key,
@@ -53,7 +55,7 @@ dp.callback_query.middleware(RateLimitMiddleware(1.0))
 
 # Handlers setup
 start_handler.setup(db)
-generate_handler.setup(client, db)
+generate_handler.setup(client, db, cache)
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
 prices_handler.setup(db)
@@ -122,6 +124,10 @@ async def on_startup() -> None:
 async def on_shutdown() -> None:
     # Gracefully close external resources
     await bot.session.close()
+    try:
+        await cache.close()
+    except Exception:
+        pass
 
 
 @app.get("/")
