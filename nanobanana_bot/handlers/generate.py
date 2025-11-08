@@ -237,7 +237,7 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         summary = (
             f"{t(lang, 'gen.summary.title')}\n\n"
             f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-            f"{t(lang, 'gen.summary.prompt', prompt=html.bold(prompt))}\n"
+            f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
             f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
         )
         summary += f"• Фото: {len(photos)} из {photos_needed}"
@@ -392,7 +392,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(prompt))}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
     if gen_type in {"text_photo", "text_multi"}:

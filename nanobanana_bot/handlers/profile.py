@@ -50,7 +50,7 @@ async def profile(message: Message) -> None:
     await message.answer(
         (
             f"{t(lang, 'profile.title')}\n\n"
-            f"{t(lang, 'profile.name', name=html.bold(full_name))}\n"
+            f"{t(lang, 'profile.name', name=html.bold(html.quote(str(full_name or ""))))}\n"
             f"{t(lang, 'profile.username', username=('@' + username) if username else '—')}\n"
             f"{t(lang, 'profile.id', id=message.from_user.id)}\n"
             f"{t(lang, 'profile.lang', lang_code=language_code or '—')}\n\n"
