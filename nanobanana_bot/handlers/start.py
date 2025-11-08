@@ -56,7 +56,7 @@ async def start(message: Message) -> None:
     )
 
     await message.answer(
-        t(lang, "start.welcome", name=html.bold(html.quote(str(message.from_user.full_name or ""))), balance=balance),
+        t(lang, "start.welcome", name=html.bold(html.quote(str(message.from_user.full_name or ''))), balance=balance),
         reply_markup=keyboard,
     )
 
@@ -110,7 +110,7 @@ async def set_lang(callback: CallbackQuery) -> None:
         resize_keyboard=True,
     )
     await callback.message.answer(
-        t(lang, "start.welcome", name=html.bold(html.quote(str(callback.from_user.full_name or ""))), balance=balance),
+        t(lang, "start.welcome", name=html.bold(html.quote(str(callback.from_user.full_name or ''))), balance=balance),
         reply_markup=keyboard,
     )
 
