@@ -305,6 +305,26 @@ async def nanobanana_callback(request: Request) -> dict:
             except Exception as e:
                 logger.warning("Failed to mark generation failed id=%s: %s", generation_id, e)
 
+        # Попробуем получить user_id из записи генерации, если он отсутствует
+        if user_id is None and generation_id is not None:
+            try:
+                gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
+                rows = getattr(gen, "data", []) or []
+                if rows:
+                    user_id = rows[0].get("user_id")
+            except Exception as e:
+                logger.warning("Failed to fetch user_id for failed generation id=%s: %s", generation_id, e)
+
+        # Вернём списанные токены (4) пользователю при неудачной генерации
+        if user_id is not None:
+            try:
+                current_balance = await db.get_token_balance(int(user_id))
+                new_balance = int(current_balance) + 4
+                await db.set_token_balance(int(user_id), new_balance)
+                logger.info("Refunded 4 tokens: user=%s balance %s->%s", user_id, current_balance, new_balance)
+            except Exception as e:
+                logger.warning("Failed to refund tokens to user %s: %s", user_id, e)
+
         # Уведомим пользователя о неудаче
         if user_id is not None:
             try:
@@ -322,7 +342,9 @@ async def nanobanana_callback(request: Request) -> dict:
                     ],
                     resize_keyboard=True,
                 )
-                await bot.send_message(chat_id=int(user_id), text=f"Ошибка генерации: {fail_msg}", reply_markup=reply_markup)
+                # Добавим уведомление о возврате токенов
+                refund_note = "Токены возвращены: +4" if lang == "ru" else "Tokens refunded: +4"
+                await bot.send_message(chat_id=int(user_id), text=f"Ошибка генерации: {fail_msg}\n\n{refund_note}", reply_markup=reply_markup)
             except Exception as e:
                 logger.warning("Failed to notify user %s of failure: %s", user_id, e)
         else:
