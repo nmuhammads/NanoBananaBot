@@ -46,7 +46,24 @@ class NanoBananaClient:
         # Model: text-only uses 'google/nano-banana', edit uses 'google/nano-banana-edit'
         payload["model"] = model or "google/nano-banana"
         if self.callback_url:
-            payload["callBackUrl"] = self.callback_url
+            # Если meta содержит идентификаторы, добавим их в query строки callback URL,
+            # чтобы надёжно восстановить контекст в обработчике.
+            cb_url = self.callback_url
+            try:
+                if meta and (meta.get("generationId") is not None or meta.get("userId") is not None):
+                    from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+                    parsed = urlparse(str(cb_url))
+                    qs = dict(parse_qsl(parsed.query))
+                    if meta.get("generationId") is not None:
+                        qs["generationId"] = str(meta.get("generationId"))
+                    if meta.get("userId") is not None:
+                        qs["userId"] = str(meta.get("userId"))
+                    new_query = urlencode(qs)
+                    cb_url = urlunparse(parsed._replace(query=new_query))
+            except Exception:
+                # В случае ошибки формирования URL — используем исходный
+                pass
+            payload["callBackUrl"] = cb_url
         input_obj: Dict[str, Any] = {"prompt": prompt}
         if output_format:
             input_obj["output_format"] = output_format

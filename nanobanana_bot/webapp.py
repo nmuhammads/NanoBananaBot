@@ -260,6 +260,24 @@ async def nanobanana_callback(request: Request) -> dict:
     generation_id = data.get("generationId") or (data.get("data") or {}).get("generationId")
     user_id = data.get("userId") or (data.get("data") or {}).get("userId")
 
+    # Идентификаторы могут быть добавлены в query параметрах callBackUrl
+    try:
+        qp = request.query_params
+        qp_gen = qp.get("generationId")
+        qp_user = qp.get("userId")
+        if generation_id is None and qp_gen is not None:
+            try:
+                generation_id = int(qp_gen)
+            except Exception:
+                generation_id = qp_gen
+        if user_id is None and qp_user is not None:
+            try:
+                user_id = int(qp_user)
+            except Exception:
+                user_id = qp_user
+    except Exception:
+        pass
+
     try:
         payload_data = data.get("data") or {}
         # Parse resultJson if present
