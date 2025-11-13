@@ -79,6 +79,9 @@ class GenerateStates(StatesGroup):
     confirming = State()
     choosing_avatar = State()
     choosing_avatars_multi = State()
+    repeating_confirm = State()
+
+
 
 
 def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
@@ -238,7 +241,13 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(StateFilter(GenerateStates.waiting_prompt))
 async def receive_prompt(message: Message, state: FSMContext) -> None:
-    prompt = (message.text or "").strip()
+    text = (message.text or "").strip()
+    st0 = await state.get_data()
+    lang0 = st0.get("lang")
+    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
+        await start_generate(message, state)
+        return
+    prompt = text
     if not prompt:
         st = await state.get_data()
         lang = st.get("lang")
@@ -836,26 +845,21 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message((F.text == t("ru", "kb.repeat_generation")) | (F.text == t("en", "kb.repeat_generation")))
 async def repeat_last_generation(message: Message, state: FSMContext) -> None:
-    """Повторяет последнюю успешную генерацию с теми же параметрами и данными."""
     if _client is None or _db is None:
         return
     user_id = int(message.from_user.id)
-    # Определим язык
     try:
         res = _db.client.table("users").select("language_code").eq("user_id", user_id).limit(1).execute()
         rows = getattr(res, "data", []) or []
         lang = normalize_lang(rows[0].get("language_code") if rows else None)
     except Exception:
         lang = normalize_lang(message.from_user.language_code)
-
-    # Проверим наличие мета‑параметров последней успешной генерации в кэше
     meta = None
     try:
         if _cache is not None:
             meta = await _cache.get_last_success_meta(user_id)
     except Exception as e:
         _logger.warning("Failed to fetch last success meta user=%s: %s", user_id, e)
-
     if not isinstance(meta, dict):
         await message.answer(
             t(lang, "gen.repeat_not_found"),
@@ -865,7 +869,54 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
             ),
         )
         return
+    prompt = meta.get("prompt") or ""
+    gen_type = meta.get("gen_type") or "text"
+    ratio = meta.get("ratio") or "auto"
+    photos = meta.get("photos") or []
+    avatar_file_path = meta.get("avatar_file_path")
+    selected_avatars = meta.get("selected_avatars") or []
+    type_map = {
+        "text": t(lang, "gen.type.text"),
+        "text_photo": t(lang, "gen.type.text_photo"),
+        "text_multi": t(lang, "gen.type.text_multi"),
+        "edit_photo": t(lang, "gen.type.edit_photo"),
+    }
+    gen_type_label = type_map.get(gen_type, str(gen_type))
+    ratio_label = t(lang, "gen.ratio.auto") if ratio == "auto" else ratio
+    summary = (
+        f"{t(lang, 'gen.summary.title')}\n\n"
+        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
+        f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
+    )
+    if gen_type in {"text_photo", "text_multi", "edit_photo"}:
+        if isinstance(selected_avatars, list) and len(selected_avatars) > 0:
+            names = ", ".join([(a.get("display_name") or "—") for a in selected_avatars])
+            summary += t(lang, "gen.summary.avatars", names=names)
+        elif isinstance(avatar_file_path, str) and avatar_file_path:
+            summary += t(lang, "gen.summary.avatar", name="—")
+        else:
+            summary += t(lang, "gen.summary.photos", count=len(photos), needed=len(photos))
+    await state.update_data(user_id=user_id, lang=lang, repeat_meta=meta)
+    await state.set_state(GenerateStates.repeating_confirm)
+    await message.answer(summary, reply_markup=confirm_keyboard(lang))
 
+@router.callback_query(StateFilter(GenerateStates.repeating_confirm))
+async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
+    choice = (callback.data or "")
+    st = await state.get_data()
+    lang = st.get("lang")
+    if choice == "confirm:cancel":
+        await state.clear()
+        await callback.message.edit_text(t(lang, "gen.canceled"))
+        await callback.answer("Canceled")
+        return
+    if choice != "confirm:ok":
+        await callback.answer()
+        return
+    assert _client is not None and _db is not None
+    user_id = int(st.get("user_id"))
+    meta = st.get("repeat_meta") or {}
     prompt = meta.get("prompt") or ""
     gen_type = meta.get("gen_type") or "text"
     ratio = meta.get("ratio") or "auto"
@@ -877,19 +928,15 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     photos = meta.get("photos") or []
     avatar_file_path = meta.get("avatar_file_path")
     selected_avatars = meta.get("selected_avatars") or []
-
-    # Проверка токенов
     balance = await _db.get_token_balance(user_id)
     if balance < 4:
-        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+        await state.clear()
+        await callback.answer()
         return
-
-    # Трекинг новой генерации
     payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}"
     generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]")
     gen_id = generation.get("id")
-
-    # Seedream image_size
     ratio_map = {
         "1:1": "square_hd",
         "3:4": "portrait_4_3",
@@ -901,17 +948,13 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
         "2:3": "portrait_3_2",
     }
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
-
-    # Выбор модели
     model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
-
-    # Конвертация фото и аватаров в URL
     image_urls = []
     if len(photos) > 0:
         for pid in photos:
             try:
-                f = await message.bot.get_file(pid)
-                file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{f.file_path}"
+                f = await callback.message.bot.get_file(pid)
+                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
                 image_urls.append(file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
@@ -933,26 +976,6 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
                 image_urls.append(signed_url)
         except Exception as e:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
-
-    # Сохраняем мета попытки для связывания с callback
-    try:
-        if _cache is not None and gen_id is not None:
-            await _cache.set_attempt_meta(user_id, int(gen_id), {
-                "prompt": prompt,
-                "gen_type": gen_type,
-                "ratio": ratio,
-                "image_resolution": image_resolution,
-                "max_images": max_images,
-                "photos": photos,
-                "avatar_file_path": avatar_file_path,
-                "selected_avatars": selected_avatars,
-                "image_size": image_size,
-                "model": model,
-            })
-    except Exception as e:
-        _logger.warning("Failed to cache attempt meta for repeat user=%s gen_id=%s: %s", user_id, gen_id, e)
-
-    # Вызов API
     try:
         image_url = await _client.generate_image(
             prompt=prompt,
@@ -966,26 +989,26 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     except Exception as e:
         msg = str(e)
         if "awaiting callback" in msg:
-            # Списание токенов
             current_balance = await _db.get_token_balance(user_id)
             new_balance = max(0, int(current_balance) - 4)
             await _db.set_token_balance(user_id, new_balance)
-            await message.answer(t(lang, "gen.task_accepted"))
+            await callback.message.edit_text(t(lang, "gen.task_accepted"))
+            await state.clear()
+            await callback.answer("Started")
             return
-
         if gen_id is not None:
             await _db.mark_generation_failed(gen_id, str(e))
-        await message.answer(f"Ошибка генерации: {e}")
+        await callback.message.edit_text(f"Ошибка генерации: {e}")
         _logger.exception("Repeat generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
+        await state.clear()
+        await callback.answer()
         return
-
-    # Синхронный результат: списываем токены и отправляем картинку
     current_balance = await _db.get_token_balance(user_id)
     new_balance = max(0, int(current_balance) - 4)
     await _db.set_token_balance(user_id, new_balance)
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
-    await message.answer_document(
+    await callback.message.answer_document(
         document=URLInputFile(image_url, filename=_guess_filename(image_url)),
         caption=t(lang, "gen.result_caption"),
         reply_markup=ReplyKeyboardMarkup(
@@ -1009,3 +1032,5 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
             })
     except Exception as e:
         _logger.warning("Failed to cache last success meta (repeat) user=%s gen_id=%s: %s", user_id, gen_id, e)
+    await state.clear()
+    await callback.answer("Started")
