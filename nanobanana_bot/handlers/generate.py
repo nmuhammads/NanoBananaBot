@@ -41,6 +41,7 @@ class GenerateStates(StatesGroup):
     waiting_photos = State()
     choosing_ratio = State()
     confirming = State()
+    repeating_confirm = State()
 
 
 @router.message(
@@ -579,17 +580,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     assert _client is not None and _db is not None
     user_id = int(message.from_user.id)
-    # Определим язык пользователя
     user = await _db.get_user(user_id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-
-    # Проверим баланс
     balance = await _db.get_token_balance(user_id)
     if balance < 4:
         await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
         return
-
-    # Получим последний payload из кеша
     origin_gen_id: int | None = None
     payload: dict | None = None
     try:
@@ -599,36 +595,74 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
                 origin_gen_id, payload = res
     except Exception:
         payload = None
-
     if not payload:
         await message.answer(t(lang, "gen.repeat_not_found"))
         return
+    prompt = str(payload.get("prompt") or "").strip()
+    gen_type = str(payload.get("gen_type") or "text").strip()
+    ratio_val = str(payload.get("ratio") or "auto").strip()
+    photos = payload.get("photos") or []
+    type_map = {
+        "text": t(lang, "gen.type.text"),
+        "text_photo": t(lang, "gen.type.text_photo"),
+        "text_multi": t(lang, "gen.type.text_multi"),
+        "edit_photo": t(lang, "gen.type.edit_photo"),
+    }
+    gen_type_label = type_map.get(gen_type, str(gen_type))
+    ratio_label = t(lang, "gen.ratio.auto") if ratio_val == "auto" else ratio_val
+    summary = (
+        f"{t(lang, 'gen.summary.title')}\n\n"
+        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
+        f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
+    )
+    if gen_type in {"text_photo", "text_multi", "edit_photo"}:
+        summary += f"• Фото: {len(photos)}"
+    await state.update_data(user_id=user_id, lang=lang, repeat_origin_gen_id=origin_gen_id, repeat_payload=payload)
+    await state.set_state(GenerateStates.repeating_confirm)
+    await message.answer(summary, reply_markup=confirm_keyboard(lang))
 
+@router.callback_query(StateFilter(GenerateStates.repeating_confirm))
+async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
+    choice = (callback.data or "")
+    st = await state.get_data()
+    lang = st.get("lang")
+    if choice == "confirm:cancel":
+        await state.clear()
+        await callback.message.edit_text(t(lang, "gen.canceled"))
+        await callback.answer("Canceled")
+        return
+    if choice != "confirm:ok":
+        await callback.answer()
+        return
+    assert _client is not None and _db is not None
+    user_id = int(st.get("user_id"))
+    origin_gen_id = st.get("repeat_origin_gen_id")
+    payload = st.get("repeat_payload") or {}
     prompt = str(payload.get("prompt") or "").strip()
     gen_type = str(payload.get("gen_type") or "text").strip()
     ratio_val = str(payload.get("ratio") or "auto").strip()
     photos = payload.get("photos") or []
     image_size = payload.get("image_size")
     model = payload.get("model") or ("google/nano-banana-edit" if photos else "google/nano-banana")
-
-    # Создадим новую запись генерации
+    balance = await _db.get_token_balance(user_id)
+    if balance < 4:
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+        await state.clear()
+        await callback.answer()
+        return
     payload_desc = f"repeat_of={origin_gen_id}; type={gen_type}; ratio={ratio_val}; photos={len(photos)}"
     generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]")
     gen_id = generation.get("id")
-    _logger.info("Repeat (cache) created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio_val, len(photos))
-
-    # Построим image_urls по Telegram file_id
     image_urls: list[str] = []
     if photos:
         for pid in photos:
             try:
-                f = await message.bot.get_file(pid)
-                file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{f.file_path}"
+                f = await callback.message.bot.get_file(pid)
+                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
                 image_urls.append(file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
-
-    # Если image_size не задан — вычислим по ratio
     if not image_size:
         ratio_map = {
             "1:1": "1:1",
@@ -638,8 +672,6 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
             "16:9": "16:9",
         }
         image_size = ratio_map.get(ratio_val) if ratio_val in ratio_map else None
-
-    # Вызов генерации
     try:
         _logger.info("Calling KIE API (repeat cache) user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
         image_url = await _client.generate_image(
@@ -653,32 +685,32 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     except Exception as e:
         msg = str(e)
         if "awaiting callback" in msg:
-            # Списание токенов при асинхронном принятии
             current_balance = await _db.get_token_balance(user_id)
             new_balance = max(0, int(current_balance) - 4)
             await _db.set_token_balance(user_id, new_balance)
             _logger.info("Debited 4 tokens (async repeat): user=%s balance %s->%s", user_id, current_balance, new_balance)
-            await message.answer(t(lang, "gen.task_accepted"))
+            await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
+            await callback.answer("Started")
             return
         if gen_id is not None:
             await _db.mark_generation_failed(gen_id, str(e))
-        await message.answer(f"Ошибка генерации: {e}")
+        await callback.message.edit_text(f"Ошибка генерации: {e}")
         _logger.exception("Repeat generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
         await state.clear()
+        await callback.answer()
         return
-
-    # Списание токенов и завершение (синхронно)
     current_balance = await _db.get_token_balance(user_id)
     new_balance = max(0, int(current_balance) - 4)
     await _db.set_token_balance(user_id, new_balance)
     _logger.info("Debited 4 tokens (sync repeat): user=%s balance %s->%s", user_id, current_balance, new_balance)
-
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
-
-    await message.answer(t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val))
-    # Отправим изображение как документ, при ошибке — фото
+    await callback.message.edit_caption(
+        caption=t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val),
+    ) if callback.message.photo else await callback.message.edit_text(
+        t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val)
+    )
     try:
         from urllib.parse import urlparse
         filename = "image"
@@ -691,9 +723,10 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
         except Exception:
             pass
         file = URLInputFile(url=str(image_url), filename=filename)
-        await message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+        await callback.message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
     except Exception as e_doc:
         _logger.warning("Failed to send document, falling back to photo: %s", e_doc)
-        await message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
     await state.clear()
     _logger.info("Repeat generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
+    await callback.answer("Started")

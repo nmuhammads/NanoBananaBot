@@ -20,7 +20,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.profile": "Профиль 👤",
         "kb.topup": "Пополнить баланс ✨",
         "kb.generate": "Сгенерировать 🖼️",
-        "kb.repeat_generation": "Повторить генерацию 🔁",
+        "kb.repeat_generation": "Повторить последнюю генерацию 🔁",
         "kb.new_generation": "Новая генерация 🆕",
         "kb.start": "Старт ⏮️",
 
@@ -142,7 +142,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.profile": "Profile 👤",
         "kb.topup": "Top up ✨",
         "kb.generate": "Generate 🖼️",
-        "kb.repeat_generation": "Repeat generation 🔁",
+        "kb.repeat_generation": "Repeat last generation 🔁",
         "kb.new_generation": "New generation 🆕",
         "kb.start": "Start ⏮️",
 
