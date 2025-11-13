@@ -18,8 +18,8 @@ from aiogram.fsm.context import FSMContext
 from ..utils.seedream import SeedreamClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
-from ..cache import Cache
 import logging
+from ..cache import Cache
 
 
 router = Router(name="generate")
@@ -31,6 +31,10 @@ _seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
 _seedream_model_edit: str = "bytedance/seedream-v4-edit"
 _logger = logging.getLogger("seedream.generate")
 
+
+def _format_prompt_html(text: str) -> str:
+    safe = text.replace("<", "&lt;").replace(">", "&gt;")
+    return html.bold(safe)
 
 def _guess_filename(url: str) -> str:
     """Определяет имя файла из URL. Если расширение отсутствует — вернёт seedream.png."""
@@ -293,7 +297,7 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         summary = (
             f"{t(lang, 'gen.summary.title')}\n\n"
             f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-            f"{t(lang, 'gen.summary.prompt', prompt=html.bold(prompt))}\n"
+            f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
             f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
         )
         summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
@@ -613,7 +617,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(prompt))}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
     if gen_type in {"text_photo", "text_multi"}:
