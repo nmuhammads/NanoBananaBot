@@ -43,6 +43,16 @@ class GenerateStates(StatesGroup):
     confirming = State()
 
 
+@router.message(
+    StateFilter("*"),
+    (F.text == t("ru", "kb.generate"))
+    | (F.text == t("en", "kb.generate"))
+    | (F.text == t("ru", "kb.new_generation"))
+    | (F.text == t("en", "kb.new_generation"))
+)
+async def restart_generate_any_state(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state)
+
 def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text=t(lang, "gen.type.text"), callback_data="gen_type:text")],
@@ -186,6 +196,12 @@ async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(StateFilter(GenerateStates.waiting_prompt))
 async def receive_prompt(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    st0 = await state.get_data()
+    lang0 = st0.get("lang")
+    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
+        await start_generate(message, state)
+        return
     prompt = (message.text or "").strip()
     if not prompt:
         st = await state.get_data()

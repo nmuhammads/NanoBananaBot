@@ -24,16 +24,24 @@ class SimpleLoggingMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         try:
+            fsm_state = None
+            try:
+                st = data.get("state")
+                if st:
+                    fsm_state = await st.get_state()
+            except Exception:
+                fsm_state = None
             if isinstance(event, Message):
                 user_id = event.from_user.id if event.from_user else None
                 chat_id = event.chat.id if event.chat else None
                 text = (event.text or event.caption or "")
                 text_snippet = text[: self.truncate_len]
                 self.logger.info(
-                    "Message: user=%s chat=%s id=%s text=%r",
+                    "Message: user=%s chat=%s id=%s state=%r text=%r",
                     user_id,
                     chat_id,
                     getattr(event, "message_id", None),
+                    fsm_state,
                     text_snippet,
                 )
             elif isinstance(event, CallbackQuery):
@@ -41,9 +49,10 @@ class SimpleLoggingMiddleware(BaseMiddleware):
                 msg_id = event.message.message_id if event.message else None
                 data_snippet = (event.data or "")[: self.truncate_len]
                 self.logger.info(
-                    "CallbackQuery: user=%s msg_id=%s data=%r",
+                    "CallbackQuery: user=%s msg_id=%s state=%r data=%r",
                     user_id,
                     msg_id,
+                    fsm_state,
                     data_snippet,
                 )
             else:
