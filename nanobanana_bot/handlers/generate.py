@@ -194,11 +194,11 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     # Проверка токенов в Supabase (баланс хранится только там)
     balance = await _db.get_token_balance(message.from_user.id)
     _logger.info("/generate start user=%s balance=%s", message.from_user.id, balance)
-    if balance < 4:
+    if balance < 3:
         user = await _db.get_user(message.from_user.id) or {}
         lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
         await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
-        _logger.warning("User %s has insufficient balance (need 4)", message.from_user.id)
+        _logger.warning("User %s has insufficient balance (need 3)", message.from_user.id)
         return
 
     await state.clear()
@@ -675,12 +675,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
-    if balance < 4:
+    if balance < 3:
         lang = st.get("lang")
         await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
         await state.clear()
         await callback.answer()
-        _logger.warning("User %s insufficient balance at confirm (need 4)", user_id)
+        _logger.warning("User %s insufficient balance at confirm (need 3)", user_id)
         return
 
     # Трекинг генерации в Supabase
@@ -775,11 +775,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         # Особый случай: провайдер принял задачу и пришлёт результат через callback
         if "awaiting callback" in msg:
             _logger.info("Async generation accepted: user=%s gen_id=%s", user_id, gen_id)
-            # Списание 4 токенов сразу после принятия задачи
+            # Списание 3 токенов сразу после принятия задачи
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 4)
+            new_balance = max(0, int(current_balance) - 3)
             await _db.set_token_balance(user_id, new_balance)
-            _logger.info("Debited 4 tokens (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            _logger.info("Debited 3 tokens (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
             lang = st.get("lang")
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
@@ -794,11 +794,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    # Списание 4 токенов и сохранение в Supabase (синхронный случай)
+    # Списание 3 токенов и сохранение в Supabase (синхронный случай)
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 4)
+    new_balance = max(0, int(current_balance) - 3)
     await _db.set_token_balance(user_id, new_balance)
-    _logger.info("Debited 4 tokens (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
+    _logger.info("Debited 3 tokens (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
 
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
@@ -990,7 +990,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         msg = str(e)
         if "awaiting callback" in msg:
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 4)
+            new_balance = max(0, int(current_balance) - 3)
             await _db.set_token_balance(user_id, new_balance)
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
@@ -1004,7 +1004,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 4)
+    new_balance = max(0, int(current_balance) - 3)
     await _db.set_token_balance(user_id, new_balance)
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)

@@ -271,7 +271,7 @@ async def seedream_callback(request: Request) -> dict:
                     current_balance = rows[0].get("balance") if rows else None
                     if current_balance is None:
                         current_balance = await db.get_token_balance(int(user_id))
-                    new_balance = int(current_balance or 0) + 4
+                    new_balance = int(current_balance or 0) + 3
                     await db.set_token_balance(int(user_id), new_balance)
 
                     # Choose localized message based on failure reason
@@ -325,7 +325,7 @@ async def seedream_callback(request: Request) -> dict:
                     current_balance = rows[0].get("balance") if rows else None
                     if current_balance is None:
                         current_balance = await db.get_token_balance(int(user_id))
-                    new_balance = int(current_balance or 0) + 4
+                    new_balance = int(current_balance or 0) + 3
                     await db.set_token_balance(int(user_id), new_balance)
                     text = t(lang, "gen.failed.generic", reason="Unknown error", balance=new_balance)
                     await bot.send_message(
