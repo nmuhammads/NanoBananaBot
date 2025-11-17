@@ -32,7 +32,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Генерация изображений по тексту\n"
             "• Текст + фото, несколько фото\n"
             "• Редактирование фото ✂️\n\n"
-            "💳 Стоимость: <b>4 токена</b> за изображение\n"
+            "💳 Стоимость: <b>3 токена</b> за изображение\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
         ),
@@ -57,7 +57,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Добавляйте стиль, освещение и композицию для лучшего результата\n"
             "• Для фото‑редактирования отправьте фото и выберите «Текст + фото 🖼️»\n"
             "• Соотношение сторон выбирается на шаге перед подтверждением\n\n"
-            "Стоимость: 4 токена за изображение. Пополнение: /topup"
+            "Стоимость: 3 токена за изображение. Пополнение: /topup"
         ),
 
         # Profile
@@ -129,7 +129,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirm.ok": "✅ Подтвердить",
         "gen.confirm.cancel": "❌ Отмена",
         "gen.canceled": "Генерация отменена.",
-        "gen.not_enough_tokens": "Недостаточно токенов: требуется 4 токена за генерацию. Ваш баланс: {balance}.\nПополнить баланс: /topup",
+        "gen.not_enough_tokens": "Недостаточно токенов: требуется 3 токена за генерацию. Ваш баланс: {balance}.\nПополнить баланс: /topup",
         "gen.done_text": "Готово! Остаток токенов: {balance}\nСоотношение: {ratio}",
         "gen.result_caption": "Результат генерации",
         "gen.task_accepted": "Задача отправлена в генерацию. Результат придёт в этом чате чуть позже.",
@@ -154,7 +154,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Text-to-image generation\n"
             "• Text + photo, multiple photos\n"
             "• Edit photo ✂️\n\n"
-            "💳 Cost: <b>4 tokens</b> per image\n"
+            "💳 Cost: <b>3 tokens</b> per image\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
         ),
@@ -179,7 +179,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Add style, lighting and composition for better results\n"
             "• For photo editing send a photo and choose ‘Text + photo 🖼️’\n"
             "• Aspect ratio is chosen right before confirmation\n\n"
-            "Cost: 4 tokens per image. Top up: /topup"
+            "Cost: 3 tokens per image. Top up: /topup"
         ),
 
         # Profile
@@ -251,7 +251,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirm.ok": "✅ Confirm",
         "gen.confirm.cancel": "❌ Cancel",
         "gen.canceled": "Generation cancelled.",
-        "gen.not_enough_tokens": "Not enough tokens: 4 tokens are required. Your balance: {balance}.\nTop up: /topup",
+        "gen.not_enough_tokens": "Not enough tokens: 3 tokens are required. Your balance: {balance}.\nTop up: /topup",
         "gen.done_text": "Done! Balance left: {balance}\nAspect ratio: {ratio}",
         "gen.result_caption": "Generation result",
         "gen.task_accepted": "Task accepted. The result will arrive here shortly.",
