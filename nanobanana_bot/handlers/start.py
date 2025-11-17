@@ -30,6 +30,13 @@ def _language_keyboard() -> InlineKeyboardMarkup:
 @router.message(CommandStart())
 async def start(message: Message) -> None:
     assert _db is not None
+    try:
+        bot_me = await message.bot.get_me()
+        bot_name = getattr(bot_me, "username", None)
+        if bot_name:
+            await _db.ensure_bot_subscription(int(message.from_user.id), bot_name)
+    except Exception:
+        pass
     # Если пользователя нет в базе — это первый запуск: сначала попросим выбрать язык
     existing = await _db.get_user(message.from_user.id)
     if not existing:

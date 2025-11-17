@@ -97,3 +97,21 @@ class Database:
         )
         rows = getattr(res, "data", []) or []
         return rows[0] if rows else None
+
+    async def ensure_bot_subscription(self, user_id: int, bot_source: str) -> None:
+        self.client.table("bot_subscriptions").upsert(
+            {"user_id": int(user_id), "bot_source": str(bot_source)},
+            on_conflict="user_id,bot_source",
+        ).execute()
+
+    async def has_bot_subscription(self, user_id: int, bot_source: str) -> bool:
+        res = (
+            self.client.table("bot_subscriptions")
+            .select("user_id, bot_source")
+            .eq("user_id", int(user_id))
+            .eq("bot_source", str(bot_source))
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", []) or []
+        return bool(rows)

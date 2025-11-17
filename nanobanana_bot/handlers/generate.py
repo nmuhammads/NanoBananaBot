@@ -149,6 +149,19 @@ def photo_count_keyboard(selected: int | None = None, lang: str | None = None) -
 @router.message(Command("generate"))
 async def start_generate(message: Message, state: FSMContext) -> None:
     assert _client is not None and _db is not None
+    try:
+        bot_me = await message.bot.get_me()
+        bot_name = getattr(bot_me, "username", None)
+        if bot_name:
+            await _db.ensure_bot_subscription(int(message.from_user.id), bot_name)
+            try:
+                _exists = await _db.has_bot_subscription(int(message.from_user.id), bot_name)
+                if not _exists:
+                    await _db.ensure_bot_subscription(int(message.from_user.id), bot_name)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     # Проверка токенов в Supabase (баланс хранится только там)
     balance = await _db.get_token_balance(message.from_user.id)
