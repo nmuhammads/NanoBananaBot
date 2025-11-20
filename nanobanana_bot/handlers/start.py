@@ -58,6 +58,7 @@ async def start(message: Message) -> None:
                 KeyboardButton(text=t(lang, "kb.topup")),
             ],
             [KeyboardButton(text=t(lang, "kb.generate"))],
+            [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
         ],
         resize_keyboard=True,
     )
@@ -113,6 +114,7 @@ async def set_lang(callback: CallbackQuery) -> None:
                 KeyboardButton(text=t(lang, "kb.topup")),
             ],
             [KeyboardButton(text=t(lang, "kb.generate"))],
+            [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
         ],
         resize_keyboard=True,
     )

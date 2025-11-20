@@ -70,12 +70,18 @@ class NanoBananaClient:
         if image_size:
             input_obj["image_size"] = image_size
         if image_urls:
-            # Sanitize URLs: trim spaces/backticks/quotes
             cleaned_urls: List[str] = []
             for u in image_urls:
                 su = str(u).strip().strip("`").strip('"').strip("'")
                 cleaned_urls.append(su)
             input_obj["image_urls"] = cleaned_urls
+        if (payload.get("model") == "nano-banana-pro"):
+            if image_size:
+                input_obj["aspect_ratio"] = image_size
+            if image_urls:
+                input_obj["image_input"] = list(input_obj.get("image_urls", []))
+            if "resolution" not in input_obj:
+                input_obj["resolution"] = "4K"
         payload["input"] = input_obj
         if meta:
             payload["meta"] = meta
