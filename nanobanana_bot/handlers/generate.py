@@ -50,8 +50,22 @@ class GenerateStates(StatesGroup):
     | (F.text == t("en", "kb.generate"))
     | (F.text == t("ru", "kb.new_generation"))
     | (F.text == t("en", "kb.new_generation"))
+    | (F.text == t("ru", "kb.nanobanana_pro"))
+    | (F.text == t("en", "kb.nanobanana_pro"))
 )
 async def restart_generate_any_state(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
+        assert _db is not None
+        balance = await _db.get_token_balance(message.from_user.id)
+        user = await _db.get_user(message.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+        if balance < 15:
+            await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, required=15))
+            return
+        await start_generate(message, state)
+        await state.update_data(preferred_model="nano-banana-pro")
+        return
     await start_generate(message, state)
 
 def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
@@ -121,6 +135,7 @@ def post_result_reply_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
             [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
+            [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
         ],
         resize_keyboard=True,
     )
@@ -169,7 +184,7 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     if balance < 3:
         user = await _db.get_user(message.from_user.id) or {}
         lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
+        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, required=3))
         _logger.warning("User %s has insufficient balance (need 3)", message.from_user.id)
         return
 
@@ -213,8 +228,12 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     st0 = await state.get_data()
     lang0 = st0.get("lang")
-    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
-        await start_generate(message, state)
+    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation"), t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
+        if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
+            await start_generate(message, state)
+            await state.update_data(preferred_model="nano-banana-pro")
+        else:
+            await start_generate(message, state)
         return
     prompt = (message.text or "").strip()
     if not prompt:
@@ -370,8 +389,12 @@ async def require_photo(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     st = await state.get_data()
     lang = st.get("lang")
-    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
-        await start_generate(message, state)
+    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation"), t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
+        if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
+            await start_generate(message, state)
+            await state.update_data(preferred_model="nano-banana-pro")
+        else:
+            await start_generate(message, state)
         return
     # Если пользователь открыл главное меню или ввёл /start — не мешаем обработчику старт
     if text in {t("ru", "kb.start"), t("en", "kb.start")} or text.startswith("/start"):
@@ -387,6 +410,18 @@ async def require_photo(message: Message, state: FSMContext) -> None:
 @router.message((F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
 async def start_generate_text(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
+
+@router.message((F.text == t("ru", "kb.nanobanana_pro")) | (F.text == t("en", "kb.nanobanana_pro")))
+async def start_generate_text_pro(message: Message, state: FSMContext) -> None:
+    assert _db is not None
+    balance = await _db.get_token_balance(message.from_user.id)
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    if balance < 15:
+        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, required=15))
+        return
+    await start_generate(message, state)
+    await state.update_data(preferred_model="nano-banana-pro")
 
 # Запуск генерации по кнопке «Новая генерация 🆕»
 @router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")))
@@ -458,13 +493,15 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     photos = st.get("photos", [])
 
     # Проверка токенов перед запуском (Supabase)
+    preferred = str(st.get("preferred_model") or "")
+    required_tokens = 15 if preferred == "nano-banana-pro" else 3
     balance = await _db.get_token_balance(user_id)
-    if balance < 3:
+    if balance < required_tokens:
         lang = st.get("lang")
-        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance, required=required_tokens))
         await state.clear()
         await callback.answer()
-        _logger.warning("User %s insufficient balance at confirm (need 3)", user_id)
+        _logger.warning("User %s insufficient balance at confirm (need %s)", user_id, required_tokens)
         return
 
     # Трекинг генерации в Supabase
@@ -481,10 +518,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         "9:16": "9:16",
         "16:9": "16:9",
     }
-    # Для auto не задаём image_size, чтобы провайдер сохранил исходное соотношение
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
-    # Выбор модели: если есть фото — edit, иначе text-only
-    model = "google/nano-banana-edit" if len(photos) > 0 else "google/nano-banana"
+    preferred = str(st.get("preferred_model") or "")
+    if preferred == "nano-banana-pro":
+        model = "nano-banana-pro"
+    else:
+        model = "google/nano-banana-edit" if len(photos) > 0 else "google/nano-banana"
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели)
     image_urls = []
@@ -526,7 +565,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             image_urls=image_urls or None,
             image_size=image_size,
             output_format="png",
-            meta={"generationId": gen_id, "userId": user_id},
+            meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
         )
     except Exception as e:
         msg = str(e)
@@ -535,9 +574,9 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.info("Async generation accepted: user=%s gen_id=%s", user_id, gen_id)
             # Списание 3 токенов сразу после принятия задачи
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 3)
+            new_balance = max(0, int(current_balance) - required_tokens)
             await _db.set_token_balance(user_id, new_balance)
-            _logger.info("Debited 3 tokens (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            _logger.info("Debited %s tokens (async): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
             lang = st.get("lang")
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
@@ -554,9 +593,9 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Списание 3 токенов и сохранение в Supabase (синхронный случай)
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 3)
+    new_balance = max(0, int(current_balance) - required_tokens)
     await _db.set_token_balance(user_id, new_balance)
-    _logger.info("Debited 3 tokens (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
+    _logger.info("Debited %s tokens (sync): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
 
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
@@ -595,10 +634,7 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     user_id = int(message.from_user.id)
     user = await _db.get_user(user_id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    balance = await _db.get_token_balance(user_id)
-    if balance < 3:
-        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
-        return
+    pass
     origin_gen_id: int | None = None
     payload: dict | None = None
     try:
@@ -658,9 +694,10 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     photos = payload.get("photos") or []
     image_size = payload.get("image_size")
     model = payload.get("model") or ("google/nano-banana-edit" if photos else "google/nano-banana")
+    required_tokens = 15 if model == "nano-banana-pro" else 3
     balance = await _db.get_token_balance(user_id)
-    if balance < 3:
-        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+    if balance < required_tokens:
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance, required=required_tokens))
         await state.clear()
         await callback.answer()
         return
@@ -693,15 +730,15 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
             image_urls=image_urls or None,
             image_size=image_size,
             output_format="png",
-            meta={"generationId": gen_id, "userId": user_id},
+            meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
         )
     except Exception as e:
         msg = str(e)
         if "awaiting callback" in msg:
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 3)
+            new_balance = max(0, int(current_balance) - required_tokens)
             await _db.set_token_balance(user_id, new_balance)
-            _logger.info("Debited 3 tokens (async repeat): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            _logger.info("Debited %s tokens (async repeat): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
             await callback.answer("Started")
@@ -714,9 +751,9 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 3)
+    new_balance = max(0, int(current_balance) - required_tokens)
     await _db.set_token_balance(user_id, new_balance)
-    _logger.info("Debited 3 tokens (sync repeat): user=%s balance %s->%s", user_id, current_balance, new_balance)
+    _logger.info("Debited %s tokens (sync repeat): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
     await callback.message.edit_caption(

@@ -19,7 +19,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Keyboard labels
         "kb.profile": "Профиль 👤",
         "kb.topup": "Пополнить баланс ✨",
-        "kb.generate": "Сгенерировать 🖼️",
+        "kb.generate": "Базовая генерация 🖼️",
+        "kb.nanobanana_pro": "Nanobanana Pro 🔥",
         "kb.repeat_generation": "Повторить последнюю генерацию 🔁",
         "kb.new_generation": "Новая генерация 🆕",
         "kb.start": "Старт ⏮️",
@@ -32,7 +33,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Генерация изображений по тексту\n"
             "• Текст + фото, несколько фото\n"
             "• Редактирование фото ✂️\n\n"
-            "💳 Стоимость: <b>3 токена</b> за изображение\n"
+            "💳 Стоимость: базовая — <b>3 токена</b>, Pro — <b>15 токенов</b> (4K разрешение)\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
         ),
@@ -57,7 +58,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Добавляйте стиль, освещение и композицию для лучшего результата\n"
             "• Для фото‑редактирования отправьте фото и выберите «Текст + фото 🖼️»\n"
             "• Соотношение сторон выбирается на шаге перед подтверждением\n\n"
-            "Стоимость: 3 токена за изображение. Пополнение: /topup"
+            "Стоимость: базовая — 3 токена/изобр., Pro — 15 токенов (4K по умолчанию). Пополнение: /topup"
         ),
 
         # Profile
@@ -70,7 +71,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "profile.actions": (
             "Действия:\n"
             "• Пополнить баланс ✨ — откроет меню пополнения\n"
-            "• Сгенерировать 🖼️ — запустит мастер генерации\n\n"
+            "• Базовая генерация 🖼️ — 3 токена\n"
+            "• Nanobanana Pro 🔥 — 15 токенов, 4K\n\n"
             "Команды: /help"
         ),
 
@@ -129,7 +131,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirm.ok": "✅ Подтвердить",
         "gen.confirm.cancel": "❌ Отмена",
         "gen.canceled": "Генерация отменена.",
-        "gen.not_enough_tokens": "Недостаточно токенов: требуется 3 токена за генерацию. Ваш баланс: {balance}.\nПополнить баланс: /topup",
+        "gen.not_enough_tokens": "Недостаточно токенов: требуется {required} токенов. Ваш баланс: {balance}.\nПополнить баланс: /topup",
         "gen.done_text": "Готово! Остаток токенов: {balance}\nСоотношение: {ratio}",
         "gen.result_caption": "Результат генерации",
         "gen.task_accepted": "Задача отправлена в генерацию. Результат придёт в этом чате чуть позже.",
@@ -141,7 +143,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Keyboard labels
         "kb.profile": "Profile 👤",
         "kb.topup": "Top up ✨",
-        "kb.generate": "Generate 🖼️",
+        "kb.generate": "Basic generation 🖼️",
+        "kb.nanobanana_pro": "Nanobanana Pro 🔥",
         "kb.repeat_generation": "Repeat last generation 🔁",
         "kb.new_generation": "New generation 🆕",
         "kb.start": "Start ⏮️",
@@ -154,7 +157,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Text-to-image generation\n"
             "• Text + photo, multiple photos\n"
             "• Edit photo ✂️\n\n"
-            "💳 Cost: <b>3 tokens</b> per image\n"
+            "💳 Cost: basic — <b>3 tokens</b>, Pro — <b>15 tokens</b> (4K resolution)\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
         ),
@@ -179,7 +182,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Add style, lighting and composition for better results\n"
             "• For photo editing send a photo and choose ‘Text + photo 🖼️’\n"
             "• Aspect ratio is chosen right before confirmation\n\n"
-            "Cost: 3 tokens per image. Top up: /topup"
+            "Cost: basic — 3 tokens/img, Pro — 15 tokens (4K default). Top up: /topup"
         ),
 
         # Profile
@@ -192,7 +195,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "profile.actions": (
             "Actions:\n"
             "• Top up ✨ — opens the top‑up menu\n"
-            "• Generate 🖼️ — starts the generation wizard\n\n"
+            "• Basic generation 🖼️ — 3 tokens\n"
+            "• Nanobanana Pro 🔥 — 15 tokens, 4K\n\n"
             "Commands: /help"
         ),
 
@@ -251,7 +255,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirm.ok": "✅ Confirm",
         "gen.confirm.cancel": "❌ Cancel",
         "gen.canceled": "Generation cancelled.",
-        "gen.not_enough_tokens": "Not enough tokens: 3 tokens are required. Your balance: {balance}.\nTop up: /topup",
+        "gen.not_enough_tokens": "Insufficient tokens: requires {required} tokens. Your balance: {balance}.\nTop up: /topup",
         "gen.done_text": "Done! Balance left: {balance}\nAspect ratio: {ratio}",
         "gen.result_caption": "Generation result",
         "gen.task_accepted": "Task accepted. The result will arrive here shortly.",

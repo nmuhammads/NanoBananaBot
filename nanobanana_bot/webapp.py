@@ -294,13 +294,20 @@ async def nanobanana_callback(request: Request) -> dict:
 
         # Parse param.meta for generationId/userId if missing
         param_json = payload_data.get("param")
-        if param_json and (generation_id is None or user_id is None):
+        tokens_required = 3
+        if param_json:
             import json
             try:
                 param_obj = json.loads(param_json)
                 meta = param_obj.get("meta") or {}
                 generation_id = generation_id or meta.get("generationId")
                 user_id = user_id or meta.get("userId")
+                try:
+                    tr = int(meta.get("tokens")) if meta.get("tokens") is not None else tokens_required
+                    if tr > 0:
+                        tokens_required = tr
+                except Exception:
+                    pass
             except Exception as e:
                 logger.warning("Failed to parse param meta: %s", e)
     except Exception as e:
@@ -333,13 +340,13 @@ async def nanobanana_callback(request: Request) -> dict:
             except Exception as e:
                 logger.warning("Failed to fetch user_id for failed generation id=%s: %s", generation_id, e)
 
-        # Вернём списанные токены (4) пользователю при неудачной генерации
+        # Вернём списанные токены пользователю при неудачной генерации
         if user_id is not None:
             try:
                 current_balance = await db.get_token_balance(int(user_id))
-                new_balance = int(current_balance) + 3
+                new_balance = int(current_balance) + int(tokens_required)
                 await db.set_token_balance(int(user_id), new_balance)
-                logger.info("Refunded 3 tokens: user=%s balance %s->%s", user_id, current_balance, new_balance)
+                logger.info("Refunded %s tokens: user=%s balance %s->%s", tokens_required, user_id, current_balance, new_balance)
             except Exception as e:
                 logger.warning("Failed to refund tokens to user %s: %s", user_id, e)
 
@@ -357,11 +364,14 @@ async def nanobanana_callback(request: Request) -> dict:
                     keyboard=[
                         [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
                         [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
+                        [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
                     ],
                     resize_keyboard=True,
                 )
                 # Добавим уведомление о возврате токенов
-                refund_note = "Токены возвращены: +3" if lang == "ru" else "Tokens refunded: +3"
+                refund_note = (
+                    f"Токены возвращены: +{tokens_required}" if lang == "ru" else f"Tokens refunded: +{tokens_required}"
+                )
                 await bot.send_message(chat_id=int(user_id), text=f"Ошибка генерации: {fail_msg}\n\n{refund_note}", reply_markup=reply_markup)
             except Exception as e:
                 logger.warning("Failed to notify user %s of failure: %s", user_id, e)
@@ -422,6 +432,7 @@ async def nanobanana_callback(request: Request) -> dict:
                         keyboard=[
                             [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
                             [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
+                            [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
                         ],
                         resize_keyboard=True,
                     )

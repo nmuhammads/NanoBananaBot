@@ -70,22 +70,32 @@ class NanoBananaClient:
         if image_size:
             input_obj["image_size"] = image_size
         if image_urls:
-            # Sanitize URLs: trim spaces/backticks/quotes
             cleaned_urls: List[str] = []
             for u in image_urls:
                 su = str(u).strip().strip("`").strip('"').strip("'")
                 cleaned_urls.append(su)
             input_obj["image_urls"] = cleaned_urls
+        if (payload.get("model") == "nano-banana-pro"):
+            if image_size:
+                input_obj["aspect_ratio"] = image_size
+            if image_urls:
+                input_obj["image_input"] = list(input_obj.get("image_urls", []))
+            if "resolution" not in input_obj:
+                input_obj["resolution"] = "4K"
         payload["input"] = input_obj
         if meta:
             payload["meta"] = meta
 
-        # Endpoint selection: KIE API vs legacy
-        if "api.kie.ai" in self.base_url or "/api/v1" in self.base_url:
-            url = f"{self.base_url.rstrip('/')}/jobs/createTask"
+        # Endpoint selection
+        # Для Pro используем строго официальный KIE API, независимо от base_url.
+        if str(payload.get("model")) == "nano-banana-pro":
+            url = "https://api.kie.ai/api/v1/jobs/createTask"
         else:
-            # Legacy/simple provider path
-            url = f"{self.base_url}/generate"
+            if "api.kie.ai" in self.base_url or "/api/v1" in self.base_url:
+                url = f"{self.base_url.rstrip('/')}/jobs/createTask"
+            else:
+                # Legacy/simple provider path
+                url = f"{self.base_url}/generate"
 
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         self._logger.info("Requesting NanoBanana generate: url=%s, payload_keys=%s", url, list(payload.keys()))
