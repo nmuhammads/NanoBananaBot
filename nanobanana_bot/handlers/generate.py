@@ -184,7 +184,7 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(StateFilter(GenerateStates.choosing_type))
+@router.callback_query(StateFilter(GenerateStates.choosing_type), F.data.startswith("gen_type:"))
 async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
     if not data.startswith("gen_type:"):
@@ -294,7 +294,7 @@ async def receive_photo_count(message: Message, state: FSMContext) -> None:
     _logger.info("User %s typed while waiting_photo_count; suggested inline buttons", message.from_user.id)
 
 
-@router.callback_query(StateFilter(GenerateStates.waiting_photo_count))
+@router.callback_query(StateFilter(GenerateStates.waiting_photo_count), F.data.startswith("pc:select:") | (F.data == "pc:confirm"))
 async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
     if data.startswith("pc:select:"):
@@ -394,7 +394,7 @@ async def start_generate_text_new(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
 
-@router.callback_query(StateFilter(GenerateStates.choosing_ratio))
+@router.callback_query(StateFilter(GenerateStates.choosing_ratio), F.data.startswith("ratio:"))
 async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
     if not data.startswith("ratio:"):
@@ -433,7 +433,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-@router.callback_query(StateFilter(GenerateStates.confirming))
+@router.callback_query(StateFilter(GenerateStates.confirming), F.data.startswith("confirm:"))
 async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     choice = (callback.data or "")
     if choice == "confirm:cancel":
@@ -635,7 +635,7 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateStates.repeating_confirm)
     await message.answer(summary, reply_markup=confirm_keyboard(lang))
 
-@router.callback_query(StateFilter(GenerateStates.repeating_confirm))
+@router.callback_query(StateFilter(GenerateStates.repeating_confirm), F.data.startswith("confirm:"))
 async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     choice = (callback.data or "")
     st = await state.get_data()
