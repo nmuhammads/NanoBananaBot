@@ -86,12 +86,16 @@ class NanoBananaClient:
         if meta:
             payload["meta"] = meta
 
-        # Endpoint selection: KIE API vs legacy
-        if "api.kie.ai" in self.base_url or "/api/v1" in self.base_url:
-            url = f"{self.base_url.rstrip('/')}/jobs/createTask"
+        # Endpoint selection
+        # Для Pro используем строго официальный KIE API, независимо от base_url.
+        if str(payload.get("model")) == "nano-banana-pro":
+            url = "https://api.kie.ai/api/v1/jobs/createTask"
         else:
-            # Legacy/simple provider path
-            url = f"{self.base_url}/generate"
+            if "api.kie.ai" in self.base_url or "/api/v1" in self.base_url:
+                url = f"{self.base_url.rstrip('/')}/jobs/createTask"
+            else:
+                # Legacy/simple provider path
+                url = f"{self.base_url}/generate"
 
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         self._logger.info("Requesting NanoBanana generate: url=%s, payload_keys=%s", url, list(payload.keys()))
