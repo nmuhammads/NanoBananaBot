@@ -67,6 +67,12 @@ class Database:
         rows = getattr(res, "data", []) or []
         return rows[0] if rows else None
 
+    async def set_ref(self, user_id: int, ref: str) -> None:
+        self.client.table("users").update({"ref": str(ref)}).eq("user_id", int(user_id)).execute()
+
+    async def upsert_user_ref(self, user_id: int, ref: str) -> None:
+        self.client.table("users").upsert({"user_id": int(user_id), "ref": str(ref)}).execute()
+
     async def create_generation(self, user_id: int, prompt: str) -> Dict[str, Any]:
         created = (
             self.client.table("generations")
