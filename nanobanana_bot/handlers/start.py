@@ -30,11 +30,34 @@ def _language_keyboard() -> InlineKeyboardMarkup:
 @router.message(CommandStart())
 async def start(message: Message) -> None:
     assert _db is not None
+    ref_value = None
+    try:
+        txt = message.text or ""
+        if txt.startswith("/start"):
+            parts = txt.split(maxsplit=1)
+            if len(parts) > 1:
+                ref_value = parts[1].strip()
+    except Exception:
+        ref_value = None
     try:
         bot_me = await message.bot.get_me()
         bot_name = getattr(bot_me, "username", None)
         if bot_name:
             await _db.ensure_bot_subscription(int(message.from_user.id), bot_name)
+    except Exception:
+        pass
+    try:
+        if ref_value:
+            val = ref_value.strip()
+            if val.lower().startswith("ref_"):
+                tag = val[4:].lstrip("@").strip()
+                safe = "".join(ch for ch in tag if ch.isalnum() or ch in {"_", "-"})
+                if safe:
+                    user = await _db.get_user(message.from_user.id)
+                    if not user:
+                        await _db.upsert_user_ref(message.from_user.id, safe)
+                    elif not user.get("ref"):
+                        await _db.set_ref(message.from_user.id, safe)
     except Exception:
         pass
     # Если пользователя нет в базе — это первый запуск: сначала попросим выбрать язык

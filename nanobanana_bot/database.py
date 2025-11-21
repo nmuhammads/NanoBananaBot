@@ -57,6 +57,12 @@ class Database:
         # update language for existing user
         self.client.table("users").update({"language_code": language_code}).eq("user_id", user_id).execute()
 
+    async def set_ref(self, user_id: int, ref: str) -> None:
+        self.client.table("users").update({"ref": str(ref)}).eq("user_id", int(user_id)).execute()
+
+    async def upsert_user_ref(self, user_id: int, ref: str) -> None:
+        self.client.table("users").upsert({"user_id": int(user_id), "ref": str(ref)}).execute()
+
     async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         res = (
             self.client.table("users").select("*").eq("user_id", user_id).limit(1).execute()
