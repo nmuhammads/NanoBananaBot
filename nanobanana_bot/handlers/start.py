@@ -37,17 +37,40 @@ async def start(message: Message, state: FSMContext) -> None:
     user_id = int(message.from_user.id)
     bot_me = await message.bot.get_me()
     bot_name = bot_me.username if hasattr(bot_me, "username") else None
+    txt = message.text or ""
+    is_ref_link = False
+    raw_ref = None
+    try:
+        if txt.startswith("/start"):
+            parts = txt.split(maxsplit=1)
+            if len(parts) > 1:
+                val = parts[1].strip()
+                if val.lower().startswith("ref_"):
+                    is_ref_link = True
+                    raw_ref = val[4:]
+    except Exception:
+        is_ref_link = False
     # Если пользователя нет в базе — это первый запуск: сначала попросим выбрать язык
     existing = await _db.get_user(user_id)
     if not existing:
-        # Минимальная регистрация пользователя в общей таблице users
-        _db.client.table("users").upsert({
+        ref_safe = None
+        if is_ref_link:
+            try:
+                tag = (raw_ref or "").lstrip("@").strip()
+                safe = "".join(ch for ch in tag if ch.isalnum() or ch in {"_", "-"})
+                ref_safe = safe if safe else None
+            except Exception:
+                ref_safe = None
+        payload = {
             "user_id": user_id,
             "username": message.from_user.username,
             "first_name": message.from_user.first_name,
             "last_name": message.from_user.last_name,
             "language_code": message.from_user.language_code,
-        }, on_conflict="user_id").execute()
+        }
+        if ref_safe is not None:
+            payload["ref"] = ref_safe
+        _db.client.table("users").upsert(payload, on_conflict="user_id").execute()
         # Регистрация подписки на текущего бота (id + username бота)
         if bot_name:
             _db.client.table("bot_subscriptions").upsert({
@@ -67,6 +90,20 @@ async def start(message: Message, state: FSMContext) -> None:
             "user_id": user_id,
             "bot_source": bot_name,
         }, on_conflict="user_id,bot_source").execute()
+
+    if is_ref_link and not existing.get("ref"):
+        ref_safe = None
+        try:
+            tag = (raw_ref or "").lstrip("@").strip()
+            safe = "".join(ch for ch in tag if ch.isalnum() or ch in {"_", "-"})
+            ref_safe = safe if safe else None
+        except Exception:
+            ref_safe = None
+        if ref_safe is not None:
+            try:
+                await _db.set_ref(user_id, ref_safe)
+            except Exception:
+                pass
 
     # Иначе — обычное приветствие с уже выбранным языком
     lang = normalize_lang(existing.get("language_code") or message.from_user.language_code)
