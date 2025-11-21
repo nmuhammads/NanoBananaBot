@@ -228,12 +228,44 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     st0 = await state.get_data()
     lang0 = st0.get("lang")
-    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation"), t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
+    gen_triggers = {
+        t("ru", "kb.generate"),
+        t("en", "kb.generate"),
+        t("ru", "kb.new_generation"),
+        t("en", "kb.new_generation"),
+        t("ru", "kb.nanobanana_pro"),
+        t("en", "kb.nanobanana_pro"),
+    }
+    non_prompt_labels = {
+        t("ru", "kb.topup"),
+        t("en", "kb.topup"),
+        t("ru", "kb.profile"),
+        t("en", "kb.profile"),
+        t("ru", "kb.start"),
+        t("en", "kb.start"),
+        t("ru", "kb.repeat_generation"),
+        t("en", "kb.repeat_generation"),
+    }
+    if text.startswith("/"):
+        cmd = text.split()[0].lower()
+        if cmd.startswith("/generate"):
+            await state.clear()
+            await start_generate(message, state)
+            return
+        await state.clear()
+        await message.answer(t(lang0, "gen.canceled"))
+        return
+    if text in gen_triggers:
+        await state.clear()
         if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
             await start_generate(message, state)
             await state.update_data(preferred_model="nano-banana-pro")
         else:
             await start_generate(message, state)
+        return
+    if text in non_prompt_labels:
+        await state.clear()
+        await message.answer(t(lang0, "gen.canceled"))
         return
     prompt = (message.text or "").strip()
     if not prompt:
