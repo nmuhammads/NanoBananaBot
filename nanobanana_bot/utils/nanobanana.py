@@ -51,14 +51,18 @@ class NanoBananaClient:
         # --- NanoBanana Pro Implementation (New API) ---
         # --- NanoBanana Pro Implementation (New API v2) ---
         if is_pro:
+            # Model: gemini-2.5-flash-image (Testing)
+            # Was: gemini-3-pro-image-preview
+            target_model = "gemini-2.5-flash-image"
+
             # Endpoint: generateContent
-            # Docs: https://api.apiyi.com/v1beta/models/gemini-3-pro-image-preview:generateContent
+            # Docs: https://api.apiyi.com/v1beta/models/{model}:generateContent
             # We try to respect base_url if it matches the provider, otherwise use the doc's default.
             if "apiyi.com" in self.base_url:
-                 url = f"{self.base_url.rstrip('/')}/v1beta/models/gemini-3-pro-image-preview:generateContent"
+                 url = f"{self.base_url.rstrip('/')}/v1beta/models/{target_model}:generateContent"
             else:
                  # Default to the doc's endpoint if base_url is legacy
-                 url = "https://api.apiyi.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
+                 url = f"https://api.apiyi.com/v1beta/models/{target_model}:generateContent"
 
             # Prepare parts
             parts = []
@@ -121,7 +125,6 @@ class NanoBananaClient:
                 ],
                 "generationConfig": generation_config
             }
-
             timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
             self._logger.info("Requesting NanoBanana Pro (v2): url=%s model=%s ratio=%s", url, model, image_size)
             
