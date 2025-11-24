@@ -151,7 +151,8 @@ class NanoBananaClient:
                              raise RuntimeError("NanoBanana Pro API returned no candidates")
                         
                         candidate = data["candidates"][0]
-                        content_parts = candidate.get("content", {}).get("parts", [])
+                        content = candidate.get("content") or {}
+                        content_parts = content.get("parts") or []
                         
                         b64_data = None
                         
