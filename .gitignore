@@ -25,3 +25,4 @@ Docs/newapidocsv2/gemini-3-pro-text-to-image-simple.py
 Docs/newapidocsv2/gemini-3-pro-text-to-image.py
 Docs/newapidocsv2/Newapiv2.md
 deploy logs.txt
+.agent/rules/answerlanguage.md

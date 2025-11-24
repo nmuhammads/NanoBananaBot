@@ -50,10 +50,8 @@ class NanoBananaClient:
 
         # --- NanoBanana Pro Implementation (New API) ---
         # --- NanoBanana Pro Implementation (New API v2) ---
-        if is_pro:
-            # Model: gemini-2.5-flash-image-preview (Testing)
-            # Was: gemini-3-pro-image-preview
-            target_model = "gemini-2.5-flash-image-preview"
+            # Model: gemini-3-pro-image-preview
+            target_model = "gemini-3-pro-image-preview"
 
             # Endpoint: generateContent
             # Docs: https://api.apiyi.com/v1beta/models/{model}:generateContent
@@ -147,8 +145,6 @@ class NanoBananaClient:
 
                         # Parse response (v2 format)
                         # candidates[0].content.parts[...].inlineData.data
-                        self._logger.info("Full NanoBanana Pro Response: %s", data)
-
                         if "candidates" not in data or not data["candidates"]:
                              raise RuntimeError("NanoBanana Pro API returned no candidates")
                         
