@@ -97,7 +97,7 @@ def load_settings() -> Settings:
         supabase_key=supabase_key,
         redis_url=redis_url,
         nanobanana_api_base=nanobanana_api_base,
-        nanobanana_api_base=nanobanana_api_base,
+
         nanobanana_api_key=nanobanana_api_key,
         nanobanana_pro_api_key=nanobanana_pro_api_key,
         tribute_api_key=tribute_api_key,
