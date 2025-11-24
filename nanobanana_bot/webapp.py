@@ -44,6 +44,7 @@ cache = Cache(settings.redis_url)
 client = NanoBananaClient(
     base_url=settings.nanobanana_api_base,
     api_key=settings.nanobanana_api_key,
+    pro_api_key=settings.nanobanana_pro_api_key,
     timeout_seconds=settings.request_timeout_seconds,
     callback_url=(settings.webhook_url.rstrip("/") + "/nb-callback") if settings.webhook_url else None,
 )

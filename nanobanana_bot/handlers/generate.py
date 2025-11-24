@@ -591,7 +591,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.debug("Failed to store last generation payload in cache", exc_info=True)
 
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
-        image_url = await _client.generate_image(
+        image_result = await _client.generate_image(
             prompt=prompt,
             model=model,
             image_urls=image_urls or None,
@@ -623,16 +623,45 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    # Списание 3 токенов и сохранение в Supabase (синхронный случай)
+    # Списание токенов и сохранение в Supabase (синхронный случай)
     current_balance = await _db.get_token_balance(user_id)
     new_balance = max(0, int(current_balance) - required_tokens)
     await _db.set_token_balance(user_id, new_balance)
     _logger.info("Debited %s tokens (sync): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
 
+    lang = st.get("lang")
+    caption_text = t(lang, "gen.result_caption")
+    
+    # Handle Byte response (NanoBanana Pro)
+    if isinstance(image_result, bytes):
+        if gen_id is not None:
+            # Store placeholder since we don't have a URL
+            await _db.mark_generation_completed(gen_id, "base64_image_data")
+        
+        await callback.message.edit_caption(
+            caption=t(lang, "gen.done_text", balance=new_balance, ratio=ratio),
+        ) if callback.message.photo else await callback.message.edit_text(
+            t(lang, "gen.done_text", balance=new_balance, ratio=ratio)
+        )
+        
+        try:
+            file = BufferedInputFile(image_result, filename="image.png")
+            await callback.message.answer_document(document=file, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
+        except Exception as e:
+            _logger.warning("Failed to send document (bytes), falling back to photo: %s", e)
+            file = BufferedInputFile(image_result, filename="image.png")
+            await callback.message.answer_photo(photo=file, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
+            
+        await state.clear()
+        _logger.info("Generation completed (bytes): user=%s gen_id=%s", user_id, gen_id)
+        await callback.answer("Started")
+        return
+
+    # Handle String response (URL) - Legacy/Standard
+    image_url = image_result
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
 
-    lang = st.get("lang")
     await callback.message.edit_caption(
         caption=t(lang, "gen.done_text", balance=new_balance, ratio=ratio),
     ) if callback.message.photo else await callback.message.edit_text(
@@ -651,10 +680,10 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception:
             pass
         file = URLInputFile(url=str(image_url), filename=filename)
-        await callback.message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+        await callback.message.answer_document(document=file, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
     except Exception as e:
         _logger.warning("Failed to send document, falling back to photo: %s", e)
-    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+    await callback.message.answer_photo(photo=image_url, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
@@ -756,7 +785,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         image_size = ratio_map.get(ratio_val) if ratio_val in ratio_map else None
     try:
         _logger.info("Calling KIE API (repeat cache) user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
-        image_url = await _client.generate_image(
+        image_result = await _client.generate_image(
             prompt=prompt,
             model=model,
             image_urls=image_urls or None,
@@ -786,6 +815,35 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     new_balance = max(0, int(current_balance) - required_tokens)
     await _db.set_token_balance(user_id, new_balance)
     _logger.info("Debited %s tokens (sync repeat): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
+    
+    caption_text = t(lang, "gen.result_caption")
+
+    # Handle Byte response (NanoBanana Pro)
+    if isinstance(image_result, bytes):
+        if gen_id is not None:
+            await _db.mark_generation_completed(gen_id, "base64_image_data")
+        
+        await callback.message.edit_caption(
+            caption=t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val),
+        ) if callback.message.photo else await callback.message.edit_text(
+            t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val)
+        )
+        
+        try:
+            file = BufferedInputFile(image_result, filename="image.png")
+            await callback.message.answer_document(document=file, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
+        except Exception as e:
+            _logger.warning("Failed to send document (bytes), falling back to photo: %s", e)
+            file = BufferedInputFile(image_result, filename="image.png")
+            await callback.message.answer_photo(photo=file, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
+            
+        await state.clear()
+        _logger.info("Repeat generation completed (bytes): user=%s gen_id=%s", user_id, gen_id)
+        await callback.answer("Started")
+        return
+
+    # Handle String response (URL)
+    image_url = image_result
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
     await callback.message.edit_caption(
@@ -805,10 +863,10 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception:
             pass
         file = URLInputFile(url=str(image_url), filename=filename)
-        await callback.message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
-    except Exception as e_doc:
-        _logger.warning("Failed to send document, falling back to photo: %s", e_doc)
-    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+        await callback.message.answer_document(document=file, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
+    except Exception as e:
+        _logger.warning("Failed to send document, falling back to photo: %s", e)
+    await callback.message.answer_photo(photo=image_url, caption=caption_text, reply_markup=post_result_reply_keyboard(lang))
     await state.clear()
     _logger.info("Repeat generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
