@@ -17,3 +17,12 @@ venv/
 # Runtime
 logs/
 tmp/
+.agent/rules/answerlanguage.md
+Docs/newapidocsv2/gemini-3-pro-image-edit-simple.py
+Docs/newapidocsv2/gemini-3-pro-image-edit.py
+Docs/newapidocsv2/gemini-3-pro-text-to-image-simple.py
+Docs/newapidocsv2/gemini-3-pro-text-to-image.py
+Docs/newapidocsv2/Newapiv2.md
+Docs/NanoBananaPro.md
+Docs/NewApiNanoBananaPro.md
+deploy logs.txt

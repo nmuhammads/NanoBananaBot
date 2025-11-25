@@ -704,7 +704,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     # Для auto не задаём image_size, чтобы провайдер сохранил исходное соотношение
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
     # Разрешение и количество изображений по умолчанию
-    image_resolution = "2K"
+    image_resolution = "4K"
     max_images = 1
     # Выбор модели: Seedream V4 — для текстовой генерации и редактирования (из конфига)
     model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
