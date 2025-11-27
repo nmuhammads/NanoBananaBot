@@ -44,16 +44,26 @@ class GenerateStates(StatesGroup):
     repeating_confirm = State()
 
 
+
+GEN_TRIGGERS = {
+    t("ru", "kb.generate"),
+    t("en", "kb.generate"),
+    t("ru", "kb.new_generation"),
+    t("en", "kb.new_generation"),
+    t("ru", "kb.nanobanana_pro"),
+    t("en", "kb.nanobanana_pro"),
+}
+
+def trigger_filter(message: Message) -> bool:
+    text = message.text or ""
+    res = text in GEN_TRIGGERS
+    if not res and ("Nanobanana" in text or "Базовая" in text):
+         _logger.warning("DEBUG: Filter mismatch! text='%r' not in GEN_TRIGGERS. Set has: %r", text, GEN_TRIGGERS)
+    return res
+
 @router.message(
     StateFilter("*"),
-    F.text.in_({
-        t("ru", "kb.generate"),
-        t("en", "kb.generate"),
-        t("ru", "kb.new_generation"),
-        t("en", "kb.new_generation"),
-        t("ru", "kb.nanobanana_pro"),
-        t("en", "kb.nanobanana_pro"),
-    })
+    trigger_filter
 )
 async def restart_generate_any_state(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
@@ -643,6 +653,17 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
+
+# Debug handler for unhandled messages
+@router.message(StateFilter("*"))
+async def catch_all_debug(message: Message, state: FSMContext) -> None:
+    text = message.text or ""
+    st = await state.get_state()
+    _logger.info("DEBUG: Unhandled message text='%s' state='%s'", text, st)
+    # Don't answer, just log. Or maybe answer if it's a known button that failed?
+    if text in GEN_TRIGGERS:
+        _logger.error("DEBUG: Message '%s' is in GEN_TRIGGERS but fell through!", text)
+
 
 # Повтор последнего запроса генерации (любой тип, включая фото) из кеша
 @router.message((F.text == t("ru", "kb.repeat_generation")) | (F.text == t("en", "kb.repeat_generation")))
