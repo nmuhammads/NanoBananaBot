@@ -76,7 +76,7 @@ class Database:
     async def create_generation(self, user_id: int, prompt: str) -> Dict[str, Any]:
         created = (
             self.client.table("generations")
-            .insert({"user_id": user_id, "prompt": prompt, "status": "pending"})
+            .insert({"user_id": user_id, "prompt": prompt, "status": "pending", "model": "seedream4"})
             .execute()
         )
         return created.data[0]
