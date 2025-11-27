@@ -537,10 +537,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     # Трекинг генерации в Supabase
+    preferred = str(st.get("preferred_model") or "")
+    db_model = "nanobanana-pro" if preferred == "nano-banana-pro" else "nanobanana"
     payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}"
-    generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]")
+    generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]", db_model)
     gen_id = generation.get("id")
-    _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio, len(photos))
+    _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s model=%s", gen_id, user_id, gen_type, ratio, len(photos), db_model)
 
     # Подготовка параметров KIE API
     ratio_map = {
@@ -734,7 +736,8 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     payload_desc = f"repeat_of={origin_gen_id}; type={gen_type}; ratio={ratio_val}; photos={len(photos)}"
-    generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]")
+    db_model = "nanobanana-pro" if model == "nano-banana-pro" else "nanobanana"
+    generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]", db_model)
     gen_id = generation.get("id")
     image_urls: list[str] = []
     if photos:

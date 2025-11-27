@@ -17,3 +17,6 @@ venv/
 # Runtime
 logs/
 tmp/
+Docs/*
+.agent/*
+deploy logs.txt

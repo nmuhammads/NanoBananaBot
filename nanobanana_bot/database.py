@@ -70,10 +70,10 @@ class Database:
         rows = getattr(res, "data", []) or []
         return rows[0] if rows else None
 
-    async def create_generation(self, user_id: int, prompt: str) -> Dict[str, Any]:
+    async def create_generation(self, user_id: int, prompt: str, model: str) -> Dict[str, Any]:
         created = (
             self.client.table("generations")
-            .insert({"user_id": user_id, "prompt": prompt, "status": "pending"})
+            .insert({"user_id": user_id, "prompt": prompt, "status": "pending", "model": model})
             .execute()
         )
         return created.data[0]
