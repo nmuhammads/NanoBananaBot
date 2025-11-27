@@ -46,15 +46,18 @@ class GenerateStates(StatesGroup):
 
 @router.message(
     StateFilter("*"),
-    (F.text == t("ru", "kb.generate"))
-    | (F.text == t("en", "kb.generate"))
-    | (F.text == t("ru", "kb.new_generation"))
-    | (F.text == t("en", "kb.new_generation"))
-    | (F.text == t("ru", "kb.nanobanana_pro"))
-    | (F.text == t("en", "kb.nanobanana_pro"))
+    F.text.in_({
+        t("ru", "kb.generate"),
+        t("en", "kb.generate"),
+        t("ru", "kb.new_generation"),
+        t("en", "kb.new_generation"),
+        t("ru", "kb.nanobanana_pro"),
+        t("en", "kb.nanobanana_pro"),
+    })
 )
 async def restart_generate_any_state(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
+    _logger.info("restart_generate_any_state triggered by text='%s'", text)
     if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
         assert _db is not None
         balance = await _db.get_token_balance(message.from_user.id)
@@ -438,27 +441,7 @@ async def require_photo(message: Message, state: FSMContext) -> None:
     await message.answer(t(lang, "gen.require_photo", next=next_idx, total=photos_needed))
 
 
-# Текстовый запуск генерации с нижней клавиатуры
-@router.message((F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
-async def start_generate_text(message: Message, state: FSMContext) -> None:
-    await start_generate(message, state)
 
-@router.message((F.text == t("ru", "kb.nanobanana_pro")) | (F.text == t("en", "kb.nanobanana_pro")))
-async def start_generate_text_pro(message: Message, state: FSMContext) -> None:
-    assert _db is not None
-    balance = await _db.get_token_balance(message.from_user.id)
-    user = await _db.get_user(message.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    if balance < 15:
-        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, required=15))
-        return
-    await start_generate(message, state)
-    await state.update_data(preferred_model="nano-banana-pro")
-
-# Запуск генерации по кнопке «Новая генерация 🆕»
-@router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")))
-async def start_generate_text_new(message: Message, state: FSMContext) -> None:
-    await start_generate(message, state)
 
 
 @router.callback_query(StateFilter(GenerateStates.choosing_ratio), F.data.startswith("ratio:"))
