@@ -23,6 +23,7 @@ from .handlers import generate as generate_handler
 from .handlers import profile as profile_handler
 from .handlers import topup as topup_handler
 from .handlers import prices as prices_handler
+from .handlers import fallback as fallback_handler
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +68,8 @@ dp.include_router(generate_handler.router)
 dp.include_router(profile_handler.router)
 dp.include_router(topup_handler.router)
 dp.include_router(prices_handler.router)
+# Fallback router must be last
+dp.include_router(fallback_handler.router)
 
 
 app = FastAPI(title="NanoBananaBot Webhook")

@@ -654,15 +654,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
 
-# Debug handler for unhandled messages
-@router.message(StateFilter("*"))
-async def catch_all_debug(message: Message, state: FSMContext) -> None:
-    text = message.text or ""
-    st = await state.get_state()
-    _logger.info("DEBUG: Unhandled message text='%s' state='%s'", text, st)
-    # Don't answer, just log. Or maybe answer if it's a known button that failed?
-    if text in GEN_TRIGGERS:
-        _logger.error("DEBUG: Message '%s' is in GEN_TRIGGERS but fell through!", text)
+
 
 
 # Повтор последнего запроса генерации (любой тип, включая фото) из кеша

@@ -141,6 +141,8 @@ class NanoBananaClient:
             self._logger.exception("HTTP client error during NanoBanana request: %s", e)
             raise
         except Exception as e:
+            if "awaiting callback" in str(e):
+                raise e
             self._logger.exception("Unexpected error during NanoBanana request: %s", e)
             raise
 
