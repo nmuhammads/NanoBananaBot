@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from datetime import datetime, timezone
 
 from supabase import Client, create_client
@@ -70,12 +70,26 @@ class Database:
         rows = getattr(res, "data", []) or []
         return rows[0] if rows else None
 
-    async def create_generation(self, user_id: int, prompt: str, model: str) -> Dict[str, Any]:
-        created = (
-            self.client.table("generations")
-            .insert({"user_id": user_id, "prompt": prompt, "status": "pending", "model": model})
-            .execute()
-        )
+    async def create_generation(
+        self,
+        user_id: int,
+        prompt: str,
+        model: str,
+        parent_id: Optional[int] = None,
+        input_images: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        data = {
+            "user_id": user_id,
+            "prompt": prompt,
+            "status": "pending",
+            "model": model,
+        }
+        if parent_id is not None:
+            data["parent_id"] = parent_id
+        if input_images is not None:
+            data["input_images"] = input_images
+
+        created = self.client.table("generations").insert(data).execute()
         return created.data[0]
 
     async def mark_generation_completed(self, generation_id: int, media_url: str) -> None:

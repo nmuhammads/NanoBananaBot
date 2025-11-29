@@ -532,8 +532,26 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     # Трекинг генерации в Supabase
     preferred = str(st.get("preferred_model") or "")
     db_model = "nanobanana-pro" if preferred == "nano-banana-pro" else "nanobanana"
-    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}"
-    generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]", db_model)
+    
+    # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
+    image_urls = []
+    if len(photos) > 0:
+        for pid in photos:
+            try:
+                f = await callback.message.bot.get_file(pid)
+                # Предупреждение: это публичный URL с токеном — используйте только если доверяете провайдеру
+                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
+                image_urls.append(file_url)
+            except Exception as e:
+                _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+
+    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars=0"
+    generation = await _db.create_generation(
+        user_id, 
+        f"{prompt} [{payload_desc}]", 
+        db_model,
+        input_images=image_urls or None
+    )
     gen_id = generation.get("id")
     _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s model=%s", gen_id, user_id, gen_type, ratio, len(photos), db_model)
 
@@ -553,16 +571,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         model = "google/nano-banana-edit" if len(photos) > 0 else "google/nano-banana"
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели)
-    image_urls = []
-    if len(photos) > 0:
-        for pid in photos:
-            try:
-                f = await callback.message.bot.get_file(pid)
-                # Предупреждение: это публичный URL с токеном — используйте только если доверяете провайдеру
-                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
-                image_urls.append(file_url)
-            except Exception as e:
-                _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+    # image_urls уже заполнен выше
+    pass
 
     try:
         # Сохраним точный payload запроса в кеш для последующего повтора
@@ -731,10 +741,9 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await callback.answer()
         return
-    payload_desc = f"repeat_of={origin_gen_id}; type={gen_type}; ratio={ratio_val}; photos={len(photos)}"
+    payload_desc = f"repeat_of={origin_gen_id}; type={gen_type}; ratio={ratio_val}; photos={len(photos)}; avatars=0"
     db_model = "nanobanana-pro" if model == "nano-banana-pro" else "nanobanana"
-    generation = await _db.create_generation(user_id, f"{prompt} [{payload_desc}]", db_model)
-    gen_id = generation.get("id")
+    
     image_urls: list[str] = []
     if photos:
         for pid in photos:
@@ -744,6 +753,16 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
                 image_urls.append(file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+
+    generation = await _db.create_generation(
+        user_id, 
+        f"{prompt} [{payload_desc}]", 
+        db_model,
+        parent_id=origin_gen_id,
+        input_images=image_urls or None
+    )
+    gen_id = generation.get("id")
+    
     if not image_size:
         ratio_map = {
             "1:1": "1:1",
