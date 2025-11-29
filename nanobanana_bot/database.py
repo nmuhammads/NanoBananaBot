@@ -73,12 +73,25 @@ class Database:
     async def upsert_user_ref(self, user_id: int, ref: str) -> None:
         self.client.table("users").upsert({"user_id": int(user_id), "ref": str(ref)}).execute()
 
-    async def create_generation(self, user_id: int, prompt: str) -> Dict[str, Any]:
-        created = (
-            self.client.table("generations")
-            .insert({"user_id": user_id, "prompt": prompt, "status": "pending", "model": "seedream4"})
-            .execute()
-        )
+    async def create_generation(
+        self,
+        user_id: int,
+        prompt: str,
+        parent_id: Optional[int] = None,
+        input_images: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        data = {
+            "user_id": user_id,
+            "prompt": prompt,
+            "status": "pending",
+            "model": "seedream4",
+        }
+        if parent_id is not None:
+            data["parent_id"] = parent_id
+        if input_images is not None:
+            data["input_images"] = input_images
+
+        created = self.client.table("generations").insert(data).execute()
         return created.data[0]
 
     async def mark_generation_completed(self, generation_id: int, media_url: str) -> None:
