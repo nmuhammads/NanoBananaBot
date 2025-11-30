@@ -21,6 +21,7 @@ from ..utils.i18n import t, normalize_lang
 from ..utils.r2 import R2Client
 import logging
 from ..cache import Cache
+import asyncio
 
 
 router = Router(name="generate")
@@ -602,6 +603,35 @@ async def start_generate_text_new(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
 
+async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str], r2_client: R2Client, db: Database) -> None:
+    """
+    Background task to upload images to R2 and update the database.
+    """
+    try:
+        r2_urls = []
+        updated = False
+        for url in telegram_urls:
+            # Check if it's a Telegram URL (we only want to re-upload those)
+            if "api.telegram.org" in url:
+                r2_url = await r2_client.upload_file_from_url(url)
+                if r2_url:
+                    r2_urls.append(r2_url)
+                    updated = True
+                    _logger.info("Async R2 upload success: %s -> %s", url, r2_url)
+                else:
+                    r2_urls.append(url) # Keep original if failed
+                    _logger.warning("Async R2 upload failed for %s", url)
+            else:
+                r2_urls.append(url)
+        
+        if updated:
+            await db.update_generation_input_images(generation_id, r2_urls)
+            _logger.info("Updated generation %s with R2 URLs", generation_id)
+            
+    except Exception as e:
+        _logger.error("Error in async R2 upload task for gen %s: %s", generation_id, e)
+
+
 @router.callback_query(StateFilter(GenerateStates.choosing_ratio))
 async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
@@ -690,29 +720,20 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
-    # ИНТЕГРАЦИЯ R2: Загружаем файл в R2 и используем публичную ссылку
+    # ИНТЕГРАЦИЯ R2: Используем Telegram URL для скорости, R2 загружаем в фоне
     image_urls = []
+    telegram_urls_to_upload = []
+    
     if len(photos) > 0:
         for pid in photos:
             try:
                 f = await callback.message.bot.get_file(pid)
                 # Получаем временную ссылку от Telegram
                 tg_file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
-                
-                # Загружаем в R2
-                if _r2:
-                    r2_url = await _r2.upload_file_from_url(tg_file_url)
-                    if r2_url:
-                        image_urls.append(r2_url)
-                        _logger.info("Uploaded photo %s to R2: %s", pid, r2_url)
-                    else:
-                        _logger.warning("Failed to upload photo %s to R2, using Telegram URL", pid)
-                        image_urls.append(tg_file_url)
-                else:
-                    image_urls.append(tg_file_url)
-
+                image_urls.append(tg_file_url)
+                telegram_urls_to_upload.append(tg_file_url)
             except Exception as e:
-                _logger.warning("Failed to fetch/upload telegram file path for %s: %s", pid, e)
+                _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
     # Добавляем аватары (один или несколько)
     if isinstance(selected_avatars, list) and len(selected_avatars) > 0:
         for a in selected_avatars:
@@ -807,6 +828,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     try:
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        
+        # Запускаем фоновую задачу загрузки в R2
+        if _r2 and telegram_urls_to_upload:
+             # Передаем полный список image_urls, чтобы сохранить порядок и аватары, 
+             # но функция будет перезаливать только telegram ссылки
+             asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(image_urls), _r2, _db))
+
         image_url = await _client.generate_image(
             prompt=prompt,
             model=model,
