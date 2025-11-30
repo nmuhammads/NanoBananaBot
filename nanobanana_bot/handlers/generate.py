@@ -18,6 +18,7 @@ from aiogram.fsm.context import FSMContext
 from ..utils.seedream import SeedreamClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
+from ..utils.r2 import R2Client
 import logging
 from ..cache import Cache
 
@@ -27,6 +28,7 @@ router = Router(name="generate")
 _client: SeedreamClient | None = None
 _db: Database | None = None
 _cache: Cache | None = None
+_r2: R2Client | None = None
 _seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
 _seedream_model_edit: str = "bytedance/seedream-v4-edit"
 _logger = logging.getLogger("seedream.generate")
@@ -61,7 +63,11 @@ def _guess_filename(url: str) -> str:
 
 
 def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None, cache: Cache | None = None) -> None:
-    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _cache
+    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _cache, _r2
+    _client = client
+    _db = database
+    _cache = cache
+    _r2 = R2Client()
     _client = client
     _db = database
     _cache = cache
@@ -684,16 +690,29 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
+    # ИНТЕГРАЦИЯ R2: Загружаем файл в R2 и используем публичную ссылку
     image_urls = []
     if len(photos) > 0:
         for pid in photos:
             try:
                 f = await callback.message.bot.get_file(pid)
-                # Предупреждение: это публичный URL с токеном — используйте только если доверяете провайдеру
-                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
-                image_urls.append(file_url)
+                # Получаем временную ссылку от Telegram
+                tg_file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
+                
+                # Загружаем в R2
+                if _r2:
+                    r2_url = await _r2.upload_file_from_url(tg_file_url)
+                    if r2_url:
+                        image_urls.append(r2_url)
+                        _logger.info("Uploaded photo %s to R2: %s", pid, r2_url)
+                    else:
+                        _logger.warning("Failed to upload photo %s to R2, using Telegram URL", pid)
+                        image_urls.append(tg_file_url)
+                else:
+                    image_urls.append(tg_file_url)
+
             except Exception as e:
-                _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+                _logger.warning("Failed to fetch/upload telegram file path for %s: %s", pid, e)
     # Добавляем аватары (один или несколько)
     if isinstance(selected_avatars, list) and len(selected_avatars) > 0:
         for a in selected_avatars:
