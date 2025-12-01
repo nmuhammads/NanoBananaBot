@@ -18,8 +18,10 @@ from aiogram.fsm.context import FSMContext
 from ..utils.seedream import SeedreamClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
+from ..utils.r2 import R2Client
 import logging
 from ..cache import Cache
+import asyncio
 
 
 router = Router(name="generate")
@@ -27,6 +29,7 @@ router = Router(name="generate")
 _client: SeedreamClient | None = None
 _db: Database | None = None
 _cache: Cache | None = None
+_r2: R2Client | None = None
 _seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
 _seedream_model_edit: str = "bytedance/seedream-v4-edit"
 _logger = logging.getLogger("seedream.generate")
@@ -61,7 +64,11 @@ def _guess_filename(url: str) -> str:
 
 
 def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None, cache: Cache | None = None) -> None:
-    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _cache
+    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _cache, _r2
+    _client = client
+    _db = database
+    _cache = cache
+    _r2 = R2Client()
     _client = client
     _db = database
     _cache = cache
@@ -596,6 +603,35 @@ async def start_generate_text_new(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
 
+async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str], r2_client: R2Client, db: Database) -> None:
+    """
+    Background task to upload images to R2 and update the database.
+    """
+    try:
+        r2_urls = []
+        updated = False
+        for url in telegram_urls:
+            # Check if it's a Telegram URL (we only want to re-upload those)
+            if "api.telegram.org" in url:
+                r2_url = await r2_client.upload_file_from_url(url)
+                if r2_url:
+                    r2_urls.append(r2_url)
+                    updated = True
+                    _logger.info("Async R2 upload success: %s -> %s", url, r2_url)
+                else:
+                    r2_urls.append(url) # Keep original if failed
+                    _logger.warning("Async R2 upload failed for %s", url)
+            else:
+                r2_urls.append(url)
+        
+        if updated:
+            await db.update_generation_input_images(generation_id, r2_urls)
+            _logger.info("Updated generation %s with R2 URLs", generation_id)
+            
+    except Exception as e:
+        _logger.error("Error in async R2 upload task for gen %s: %s", generation_id, e)
+
+
 @router.callback_query(StateFilter(GenerateStates.choosing_ratio))
 async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
@@ -684,14 +720,18 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
+    # ИНТЕГРАЦИЯ R2: Используем Telegram URL для скорости, R2 загружаем в фоне
     image_urls = []
+    telegram_urls_to_upload = []
+    
     if len(photos) > 0:
         for pid in photos:
             try:
                 f = await callback.message.bot.get_file(pid)
-                # Предупреждение: это публичный URL с токеном — используйте только если доверяете провайдеру
-                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
-                image_urls.append(file_url)
+                # Получаем временную ссылку от Telegram
+                tg_file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
+                image_urls.append(tg_file_url)
+                telegram_urls_to_upload.append(tg_file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
     # Добавляем аватары (один или несколько)
@@ -788,6 +828,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     try:
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        
+        # Запускаем фоновую задачу загрузки в R2
+        if _r2 and telegram_urls_to_upload:
+             # Передаем полный список image_urls, чтобы сохранить порядок и аватары, 
+             # но функция будет перезаливать только telegram ссылки
+             asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(image_urls), _r2, _db))
+
         image_url = await _client.generate_image(
             prompt=prompt,
             model=model,
