@@ -16,7 +16,9 @@ from aiogram.fsm.context import FSMContext
 from ..utils.nanobanana import NanoBananaClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
+from ..utils.r2 import R2Client
 from ..cache import Cache
+import asyncio
 import logging
 import httpx
 
@@ -26,13 +28,15 @@ router = Router(name="generate")
 _client: NanoBananaClient | None = None
 _db: Database | None = None
 _cache: Cache | None = None
+_r2: R2Client | None = None
 _logger = logging.getLogger("nanobanana.generate")
 
-def setup(client: NanoBananaClient, database: Database, cache: Cache | None = None) -> None:
-    global _client, _db, _cache
+def setup(client: NanoBananaClient, database: Database, cache: Cache | None = None, r2_client: R2Client | None = None) -> None:
+    global _client, _db, _cache, _r2
     _client = client
     _db = database
     _cache = cache
+    _r2 = r2_client
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
@@ -535,13 +539,15 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
     image_urls = []
+    telegram_urls_to_upload: list[str] = []
     if len(photos) > 0:
         for pid in photos:
             try:
                 f = await callback.message.bot.get_file(pid)
                 # Предупреждение: это публичный URL с токеном — используйте только если доверяете провайдеру
-                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
-                image_urls.append(file_url)
+                tg_file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
+                image_urls.append(tg_file_url)
+                telegram_urls_to_upload.append(tg_file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
 
@@ -596,6 +602,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.debug("Failed to store last generation payload in cache", exc_info=True)
 
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        
+        # Запускаем фоновую задачу загрузки в R2
+        if _r2 and telegram_urls_to_upload:
+             asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(telegram_urls_to_upload), _r2, _db))
+
         image_url = await _client.generate_image(
             prompt=prompt,
             model=model,
@@ -665,6 +676,41 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer("Started")
 
 
+
+
+# Запуск генерации по кнопке «Новая генерация»
+@router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")))
+async def start_generate_text_new(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state)
+
+
+async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str], r2_client: R2Client, db: Database) -> None:
+    """
+    Background task to upload images to R2 and update the database.
+    """
+    try:
+        r2_urls = []
+        updated = False
+        for url in telegram_urls:
+            # Check if it's a Telegram URL (we only want to re-upload those)
+            if "api.telegram.org" in url:
+                r2_url = await r2_client.upload_file_from_url(url)
+                if r2_url:
+                    r2_urls.append(r2_url)
+                    updated = True
+                    _logger.info("Async R2 upload success: %s -> %s", url, r2_url)
+                else:
+                    r2_urls.append(url) # Keep original if failed
+                    _logger.warning("Async R2 upload failed for %s", url)
+            else:
+                r2_urls.append(url)
+        
+        if updated:
+            await db.update_generation_input_images(generation_id, r2_urls)
+            _logger.info("Updated generation %s with R2 URLs", generation_id)
+            
+    except Exception as e:
+        _logger.error("Error in async R2 upload task for gen %s: %s", generation_id, e)
 
 
 # Повтор последнего запроса генерации (любой тип, включая фото) из кеша
@@ -745,12 +791,15 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     db_model = "nanobanana-pro" if model == "nano-banana-pro" else "nanobanana"
     
     image_urls: list[str] = []
+    telegram_urls_to_upload: list[str] = []
     if photos:
         for pid in photos:
             try:
                 f = await callback.message.bot.get_file(pid)
-                file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
-                image_urls.append(file_url)
+                # Получаем временную ссылку от Telegram
+                tg_file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
+                image_urls.append(tg_file_url)
+                telegram_urls_to_upload.append(tg_file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
 

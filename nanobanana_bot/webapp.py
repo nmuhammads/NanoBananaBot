@@ -16,6 +16,7 @@ from .database import Database
 from .cache import Cache
 from .utils.nanobanana import NanoBananaClient
 from .utils.i18n import t, normalize_lang
+from .utils.r2 import R2Client
 from .middlewares.logging import SimpleLoggingMiddleware
 from .middlewares.rate_limit import RateLimitMiddleware
 from .handlers import start as start_handler
@@ -48,6 +49,7 @@ client = NanoBananaClient(
     timeout_seconds=settings.request_timeout_seconds,
     callback_url=(settings.webhook_url.rstrip("/") + "/nb-callback") if settings.webhook_url else None,
 )
+r2_client = R2Client()
 
 # Middlewares
 dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.middleware")))
@@ -57,7 +59,7 @@ dp.callback_query.middleware(RateLimitMiddleware(1.0))
 
 # Handlers setup
 start_handler.setup(db)
-generate_handler.setup(client, db, cache)
+generate_handler.setup(client, db, cache, r2_client)
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
 prices_handler.setup(db)
