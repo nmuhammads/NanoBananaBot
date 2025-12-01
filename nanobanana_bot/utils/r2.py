@@ -21,14 +21,21 @@ class R2Client:
         self.endpoint_url = f"https://{self.account_id}.r2.cloudflarestorage.com"
         self.session = aioboto3.Session()
 
-    async def upload_file_from_bytes(self, file_bytes: bytes, content_type: str = "image/png") -> str | None:
+    async def upload_file_from_bytes(self, file_bytes: bytes, content_type: str = "image/png", file_extension: str = None) -> str | None:
         """
         Uploads bytes to R2 and returns the public URL.
         """
         if not self.bucket_name:
             return None
 
-        ext = mimetypes.guess_extension(content_type) or ".png"
+        if file_extension:
+            ext = file_extension if file_extension.startswith(".") else f".{file_extension}"
+        else:
+            ext = mimetypes.guess_extension(content_type) or ".png"
+            # Fix for common issues where jpg is guessed as .jpe or similar, or binary as .bin
+            if ext == ".jpe": ext = ".jpg"
+            if ext == ".bin" and "image" in content_type: ext = ".png"
+
         filename = f"{uuid4().hex}{ext}"
 
         try:
@@ -67,7 +74,15 @@ class R2Client:
                     content = await resp.read()
                     content_type = resp.headers.get("Content-Type", "image/png")
             
-            return await self.upload_file_from_bytes(content, content_type)
+            # Try to extract extension from URL
+            file_extension = None
+            if "." in url.split("/")[-1]:
+                file_extension = os.path.splitext(url)[1]
+                # Remove query params if any
+                if "?" in file_extension:
+                    file_extension = file_extension.split("?")[0]
+
+            return await self.upload_file_from_bytes(content, content_type, file_extension=file_extension)
         except Exception as e:
             _logger.error(f"Failed to process URL upload for {url}: {e}")
             return None
