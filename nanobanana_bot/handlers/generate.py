@@ -792,7 +792,23 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     
     image_urls: list[str] = []
     telegram_urls_to_upload: list[str] = []
-    if photos:
+
+    # Try to reuse R2 URLs from original generation
+    r2_urls_reused = False
+    if origin_gen_id:
+        try:
+            origin_gen = await _db.get_generation(origin_gen_id)
+            if origin_gen and origin_gen.get("input_images"):
+                origin_images = origin_gen.get("input_images")
+                # Check if they look like R2 URLs (or just valid URLs that are not telegram API)
+                if all(isinstance(u, str) and u.startswith("http") and "api.telegram.org" not in u for u in origin_images):
+                    image_urls = origin_images
+                    r2_urls_reused = True
+                    _logger.info("Reusing R2 URLs from gen %s for repeat", origin_gen_id)
+        except Exception as e:
+            _logger.warning("Failed to fetch origin generation %s: %s", origin_gen_id, e)
+
+    if photos and not r2_urls_reused:
         for pid in photos:
             try:
                 f = await callback.message.bot.get_file(pid)
@@ -803,16 +819,25 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
 
-    generation = await _db.create_generation(
-        user_id, 
-        f"{prompt} [{payload_desc}]", 
-        db_model,
-        parent_id=origin_gen_id,
-        input_images=image_urls or None
-    )
-    gen_id = generation.get("id")
-    
-    if not image_size:
+    # Создаем запись в БД
+    try:
+        gen = await _db.create_generation(
+            user_id=user_id,
+            prompt=f"{prompt} [{payload_desc}]", # Adjusted prompt to match original logic
+            model=db_model,
+            parent_id=origin_gen_id, # Added parent_id to match original logic
+            input_images=image_urls or None,
+        )
+        gen_id = gen.get("id")
+        _logger.info("Repeat generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio_val, len(photos))
+    except Exception as e:
+        _logger.error("Failed to create generation record: %s", e)
+        await callback.message.edit_text(t(lang, "gen.error_db"))
+        await state.clear()
+        await callback.answer()
+        return
+
+    if not image_size: # This block was before the try/except for generation creation
         ratio_map = {
             "1:1": "1:1",
             "3:4": "3:4",
@@ -821,8 +846,14 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
             "16:9": "16:9",
         }
         image_size = ratio_map.get(ratio_val) if ratio_val in ratio_map else None
+
     try:
-        _logger.info("Calling KIE API (repeat cache) user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+
+        # Запускаем фоновую задачу загрузки в R2
+        if _r2 and telegram_urls_to_upload:
+             asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(telegram_urls_to_upload), _r2, _db))
+
         image_url = await _client.generate_image(
             prompt=prompt,
             model=model,

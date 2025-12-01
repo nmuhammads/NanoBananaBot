@@ -140,3 +140,14 @@ class Database:
         )
         rows = getattr(res, "data", []) or []
         return bool(rows)
+
+    async def get_generation(self, generation_id: int) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("generations")
+            .select("*")
+            .eq("id", generation_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", []) or []
+        return rows[0] if rows else None
