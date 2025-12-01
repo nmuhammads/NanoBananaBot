@@ -600,7 +600,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 await _cache.set_last_generation_attempt(user_id, int(gen_id), payload)
         except Exception:
             _logger.debug("Failed to store last generation payload in cache", exc_info=True)
-    try:
+
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
         
         # Запускаем фоновую задачу загрузки в R2
