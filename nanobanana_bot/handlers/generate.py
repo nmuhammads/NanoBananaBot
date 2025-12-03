@@ -298,7 +298,13 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     gen_type = data.get("gen_type")
     lang = data.get("lang")
+    engine = data.get("engine", "default")
     if gen_type == "text":
+        if engine == "seedream_4_5":
+            # Skip ratio selection for Seedream 4.5
+            await state.update_data(ratio="auto")
+            await _show_confirmation(message, state, lang, gen_type, prompt, ratio="auto")
+            return
         await state.set_state(GenerateStates.choosing_ratio)
         await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
         return
@@ -488,6 +494,20 @@ async def pick_avatar(callback: CallbackQuery, state: FSMContext) -> None:
         photos_needed=1,
         photos=[],
     )
+    
+    st = await state.get_data()
+    engine = st.get("engine", "default")
+    if engine == "seedream_4_5":
+        # Skip ratio selection for Seedream 4.5
+        await state.update_data(ratio="auto")
+        # Need prompt? For avatar pick, we usually already have prompt from receive_prompt?
+        # Wait, flow is: receive_prompt -> text_photo -> avatar_source -> pick_avatar -> ratio
+        # So prompt is in state.
+        prompt = st.get("prompt")
+        await _show_confirmation(callback.message, state, lang, "text_photo", prompt, ratio="auto")
+        await callback.answer()
+        return
+
     await state.set_state(GenerateStates.choosing_ratio)
     await callback.message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
     await callback.answer()
@@ -535,6 +555,15 @@ async def pick_avatars_multi(callback: CallbackQuery, state: FSMContext) -> None
         selected_count = st.get("selected_photo_count")
         if not isinstance(selected_count, int) or selected_count < 1:
             await state.update_data(photos_needed=0, photos=[])
+            
+            engine = st.get("engine", "default")
+            if engine == "seedream_4_5":
+                await state.update_data(ratio="auto")
+                prompt = st.get("prompt")
+                await _show_confirmation(callback.message, state, lang, "text_multi", prompt, ratio="auto")
+                await callback.answer()
+                return
+
             await state.set_state(GenerateStates.choosing_ratio)
             await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
             await callback.answer()
@@ -600,6 +629,14 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
         )
         return
     # Обычные режимы — выбор соотношения сторон
+    engine = st.get("engine", "default")
+    if engine == "seedream_4_5":
+        await state.update_data(ratio="auto")
+        prompt = st.get("prompt")
+        # gen_type might be text_photo or text_multi
+        await _show_confirmation(message, state, lang, gen_type, prompt, ratio="auto")
+        return
+
     await state.set_state(GenerateStates.choosing_ratio)
     await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
 
@@ -624,6 +661,42 @@ async def require_photo(message: Message, state: FSMContext) -> None:
 
 
 # Текстовый запуск генерации с нижней клавиатуры
+
+async def _show_confirmation(message: Message, state: FSMContext, lang: str, gen_type: str, prompt: str, ratio: str) -> None:
+    st = await state.get_data()
+    photos = st.get("photos", [])
+    photos_needed = st.get("photos_needed", 0)
+    avatar_display_name = st.get("avatar_display_name")
+    
+    type_map = {
+        "text": t(lang, "gen.type.text"),
+        "text_photo": t(lang, "gen.type.text_photo"),
+        "text_multi": t(lang, "gen.type.text_multi"),
+        "edit_photo": t(lang, "gen.type.edit_photo"),
+    }
+    gen_type_label = type_map.get(gen_type, str(gen_type))
+    
+    ratio_label = ratio
+    if ratio == "auto":
+        ratio_label = t(lang, "gen.ratio.auto")
+
+    summary = (
+        f"{t(lang, 'gen.summary.title')}\n\n"
+        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
+        f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
+    )
+    
+    if gen_type in {"text_photo", "text_multi"}:
+        if gen_type == "text_photo" and avatar_display_name:
+             summary += t(lang, "gen.summary.avatar", name=avatar_display_name) + "\n"
+        else:
+             summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
+
+    await state.set_state(GenerateStates.confirming)
+    await message.answer(summary, reply_markup=confirm_keyboard(lang))
+
+
 @router.message((F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
 async def start_generate_text(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)

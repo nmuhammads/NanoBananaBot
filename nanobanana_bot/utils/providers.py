@@ -154,20 +154,11 @@ class UnifiedClient:
             ratio = "1:1" # Default fallback
 
         # Map ratio to Wavespeed size (approx 2K/4K logic or fixed)
-        # Wavespeed doc says range 1024-4096. Let's aim for ~1024-1536 for speed/cost or 2048 for quality.
-        # Replicate defaults to 2K.
-        # Let's use a simple mapping for now.
-        ws_sizes = {
-            "1:1": "1024x1024",
-            "3:4": "896x1152", # approx
-            "4:3": "1152x896",
-            "9:16": "768x1344",
-            "16:9": "1344x768",
-            "21:9": "1536x640",
-            "3:2": "1216x832",
-            "2:3": "832x1216",
-        }
-        ws_size = ws_sizes.get(ratio, "1024x1024")
+        # User requested max possible for 4K (up to 4096px) for Wavespeed
+        # and fixed "size": "2K", "aspect_ratio": "match_input_image" for Replicate
+        
+        # Wavespeed: use 4096x4096 (or similar high res)
+        ws_size = "4096x4096"
 
         # 1. Try Wavespeed if configured and balance is sufficient
         if self.wavespeed:
@@ -197,7 +188,8 @@ class UnifiedClient:
             return await self.replicate.generate_image(
                 prompt,
                 model="bytedance/seedream-4.5",
-                aspect_ratio=ratio,
+                size="2K",
+                aspect_ratio="match_input_image",
                 **kwargs
             )
         
