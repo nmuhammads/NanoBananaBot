@@ -27,8 +27,8 @@ class WavespeedClient:
             self._logger.error("Failed to check Wavespeed balance: %s", e)
             return 0.0
 
-    async def generate_image(self, prompt: str, model: str = "bytedance/seedream-v4.5-text-to-image", **kwargs) -> str:
-        """Generates an image using Wavespeed API."""
+    async def generate_image(self, prompt: str, model: str = "bytedance/seedream-v4.5-text-to-image", status_callback=None, **kwargs) -> str:
+        """Generates an image using Wavespeed API with polling."""
         url = f"{self.base_url}/{model}"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -38,22 +38,53 @@ class WavespeedClient:
             "prompt": prompt,
             "images": kwargs.get("images", []),
             "size": kwargs.get("size", "2K").replace("x", "*"), # Ensure * separator
-            "enable_sync_mode": True,
+            "enable_sync_mode": False, # Async mode for status updates
             "enable_safety_checker": False
         }
         
-        self._logger.info("Requesting Wavespeed generation: model=%s", model)
+        self._logger.info("Requesting Wavespeed generation (async): model=%s", model)
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout_seconds)) as session:
+                # 1. Submit task
                 async with session.post(url, json=payload, headers=headers) as resp:
                     resp.raise_for_status()
                     data = await resp.json()
-                    # Response format: {"outputs": ["url"], "status": "completed", ...}
-                    outputs = data.get("outputs", [])
-                    if outputs:
-                        return outputs[0]
-                    else:
-                        raise RuntimeError(f"No outputs in Wavespeed response: {data}")
+                    # Response: {"data": {"id": "..."}}
+                    request_id = data.get("data", {}).get("id")
+                    if not request_id:
+                        raise RuntimeError(f"No request ID in Wavespeed response: {data}")
+                
+                # 2. Poll for results
+                poll_url = f"https://api.wavespeed.ai/api/v3/predictions/{request_id}/result"
+                start_time = asyncio.get_running_loop().time()
+                
+                while True:
+                    if asyncio.get_running_loop().time() - start_time > self.timeout_seconds:
+                        raise RuntimeError("Wavespeed generation timed out")
+                    
+                    async with session.get(poll_url, headers=headers) as resp:
+                        if resp.status != 200:
+                            self._logger.warning("Wavespeed poll error: %s", resp.status)
+                            await asyncio.sleep(1)
+                            continue
+                            
+                        data = await resp.json()
+                        result = data.get("data", {})
+                        status = result.get("status")
+                        
+                        if status_callback:
+                            await status_callback(status)
+                        
+                        if status == "completed":
+                            outputs = result.get("outputs", [])
+                            if outputs:
+                                return outputs[0]
+                            raise RuntimeError(f"No outputs in completed Wavespeed task: {result}")
+                        elif status == "failed":
+                            raise RuntimeError(f"Wavespeed task failed: {result.get('error')}")
+                        
+                        await asyncio.sleep(1)
+
         except Exception as e:
             self._logger.error("Wavespeed generation failed: %s", e)
             raise
@@ -64,27 +95,18 @@ class ReplicateClient:
         self.timeout_seconds = timeout_seconds
         self._logger = logging.getLogger("replicate.api")
 
-    async def generate_image(self, prompt: str, model: str = "bytedance/seedream-4.5", **kwargs) -> str:
-        """Generates an image using Replicate API via HTTP."""
+    async def generate_image(self, prompt: str, model: str = "bytedance/seedream-4.5", status_callback=None, **kwargs) -> str:
+        """Generates an image using Replicate API via HTTP with polling."""
         # Using the predictions endpoint
-        url = "https://api.replicate.com/v1/predictions"
         headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
-            "Prefer": "wait" # Wait for the prediction to complete
+            # "Prefer": "wait" # Removed to allow polling
         }
-        
-        # Determine version or model string. For public models, we can often pass the model name directly 
-        # if the API supports it, or we need the version hash. 
-        # The docs say "bytedance/seedream-4.5" is the model. 
-        # We might need to look up the version, but let's try with the model name if the client library does it, 
-        # but here we are using raw HTTP. 
-        # Replicate API usually requires a version for `input` payload if not using the `models/{owner}/{name}/predictions` endpoint.
-        # Let's use the `models` endpoint which is cleaner: https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions
         
         owner, name = model.split("/")
         url = f"https://api.replicate.com/v1/models/{owner}/{name}/predictions"
-
+        
         payload = {
             "input": {
                 "prompt": prompt,
@@ -99,45 +121,49 @@ class ReplicateClient:
         if image_urls:
              payload["input"]["image_input"] = image_urls
 
-        self._logger.info("Requesting Replicate generation: model=%s", model)
+        self._logger.info("Requesting Replicate generation (async): model=%s", model)
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout_seconds)) as session:
+                # 1. Create prediction
                 async with session.post(url, json=payload, headers=headers) as resp:
-                    if resp.status == 201 or resp.status == 200:
-                        data = await resp.json()
-                        # If we used Prefer: wait, it might be completed.
-                        status = data.get("status")
-                        if status == "succeeded":
-                            output = data.get("output")
-                            if isinstance(output, list) and output:
-                                return output[0]
-                            elif isinstance(output, str):
-                                return output
-                        
-                        # If not succeeded yet (or didn't wait long enough), we'd need to poll.
-                        # For simplicity in this v1, let's assume 'Prefer: wait' works for reasonable times,
-                        # or implement a simple poll loop if needed.
-                        get_url = data.get("urls", {}).get("get")
-                        if not get_url:
-                             raise RuntimeError("No get URL in Replicate response")
-                        
-                        # Poll
-                        for _ in range(30): # Poll for up to 30-60s more
-                            await asyncio.sleep(2)
-                            async with session.get(get_url, headers=headers) as get_resp:
-                                get_data = await get_resp.json()
-                                if get_data.get("status") == "succeeded":
-                                    output = get_data.get("output")
-                                    if isinstance(output, list) and output:
-                                        return output[0]
-                                    return str(output)
-                                if get_data.get("status") == "failed":
-                                    raise RuntimeError(f"Replicate task failed: {get_data.get('error')}")
-                        raise RuntimeError("Replicate task timed out")
-
-                    else:
+                    if resp.status not in (200, 201):
                         text = await resp.text()
                         raise RuntimeError(f"Replicate API error: {resp.status} {text}")
+                    
+                    data = await resp.json()
+                    get_url = data.get("urls", {}).get("get")
+                    if not get_url:
+                        raise RuntimeError("No get URL in Replicate response")
+
+                # 2. Poll for results
+                start_time = asyncio.get_running_loop().time()
+                while True:
+                    if asyncio.get_running_loop().time() - start_time > self.timeout_seconds:
+                        raise RuntimeError("Replicate task timed out")
+                        
+                    async with session.get(get_url, headers=headers) as get_resp:
+                        if get_resp.status != 200:
+                            self._logger.warning("Replicate poll error: %s", get_resp.status)
+                            await asyncio.sleep(1)
+                            continue
+                            
+                        get_data = await get_resp.json()
+                        status = get_data.get("status")
+                        
+                        if status_callback:
+                            await status_callback(status)
+                            
+                        if status == "succeeded":
+                            output = get_data.get("output")
+                            if isinstance(output, list) and output:
+                                return output[0]
+                            return str(output)
+                        elif status == "failed":
+                            raise RuntimeError(f"Replicate task failed: {get_data.get('error')}")
+                        elif status == "canceled":
+                            raise RuntimeError("Replicate task canceled")
+                            
+                        await asyncio.sleep(1)
 
         except Exception as e:
             self._logger.error("Replicate generation failed: %s", e)
@@ -149,7 +175,7 @@ class UnifiedClient:
         self.replicate = ReplicateClient(replicate_key) if replicate_key else None
         self._logger = logging.getLogger("unified.client")
 
-    async def generate_seedream_4_5(self, prompt: str, model_type: str = "t2i", **kwargs) -> str:
+    async def generate_seedream_4_5(self, prompt: str, model_type: str = "t2i", status_callback=None, **kwargs) -> str:
         ratio = kwargs.get("ratio", "1:1")
         if ratio == "auto":
             ratio = "1:1" # Default fallback
@@ -179,6 +205,7 @@ class UnifiedClient:
                         model=ws_model,
                         size=ws_size,
                         images=kwargs.get("image_urls", []),
+                        status_callback=status_callback,
                         **kwargs
                     )
                 except Exception as e:
@@ -194,6 +221,7 @@ class UnifiedClient:
                 model="bytedance/seedream-4.5",
                 size="2K",
                 aspect_ratio="match_input_image",
+                status_callback=status_callback,
                 **kwargs
             )
         

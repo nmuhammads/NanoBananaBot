@@ -863,11 +863,16 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
     # Трекинг генерации в Supabase
+    db_model_name = "seedream4"
+    if engine == "seedream_4_5":
+        db_model_name = "seedream4.5"
+
     payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}"
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]",
-        input_images=image_urls or None
+        input_images=image_urls or None,
+        model=db_model_name
     )
     gen_id = generation.get("id")
     _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio, len(photos))
@@ -936,6 +941,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
     try:
+        lang = st.get("lang")
+        await callback.message.edit_text(t(lang, "gen.generating"))
         _logger.info("Calling API for user=%s gen_id=%s model=%s size=%s images=%s type=%s engine=%s", user_id, gen_id, model, image_size, len(image_urls), gen_type, engine)
         
         # Запускаем фоновую задачу загрузки в R2
@@ -951,11 +958,45 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             if len(image_urls) > 0:
                 model_type = "edit"
             
+            # Callback for status updates
+            last_status = None
+            async def status_callback(status: str):
+                nonlocal last_status
+                if status != last_status:
+                    last_status = status
+                    # Map status to user-friendly text if needed
+                    status_text = status
+                    if status in ["starting", "processing"]:
+                        status_text = t(lang, "gen.generating") # "Generating..."
+                    elif status == "queued":
+                        status_text = t(lang, "gen.queued") # "Queued..."
+                    
+                    # Avoid editing if text is same (Telegram API limit)
+                    # But here we just set it.
+                    # Note: We should probably throttle this or check if text changed.
+                    # For now, let's just log it or simple edit.
+                    # Actually, user wants "Generating" when "pending/processing".
+                    # Let's map:
+                    # queued -> "Queued..."
+                    # starting/processing -> "Generating..."
+                    
+                    msg_text = t(lang, "gen.generating")
+                    if status == "queued":
+                        msg_text = "⏳ " + t(lang, "gen.queued", default="Queued...")
+                    elif status in ["processing", "starting"]:
+                        msg_text = "🎨 " + t(lang, "gen.generating")
+                    
+                    try:
+                        await callback.message.edit_text(msg_text)
+                    except Exception:
+                        pass # Ignore message not modified errors
+
             image_url = await _unified_client.generate_seedream_4_5(
                 prompt=prompt,
                 model_type=model_type,
                 image_urls=image_urls,
                 ratio=ratio,
+                status_callback=status_callback,
                 # Pass other args if needed, e.g. size
             )
         else:
