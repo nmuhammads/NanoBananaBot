@@ -93,8 +93,10 @@ class ReplicateClient:
                 "max_images": 1
             }
         }
-        if kwargs.get("image_input"):
-             payload["input"]["image_input"] = kwargs.get("image_input")
+        # Map image_urls to image_input
+        image_urls = kwargs.get("image_urls")
+        if image_urls:
+             payload["input"]["image_input"] = image_urls
 
         self._logger.info("Requesting Replicate generation: model=%s", model)
         try:
@@ -146,17 +148,42 @@ class UnifiedClient:
         self.replicate = ReplicateClient(replicate_key) if replicate_key else None
         self._logger = logging.getLogger("unified.client")
 
-    async def generate_seedream_4_5(self, prompt: str, **kwargs) -> str:
+    async def generate_seedream_4_5(self, prompt: str, model_type: str = "t2i", **kwargs) -> str:
+        ratio = kwargs.get("ratio", "1:1")
+        if ratio == "auto":
+            ratio = "1:1" # Default fallback
+
+        # Map ratio to Wavespeed size (approx 2K/4K logic or fixed)
+        # Wavespeed doc says range 1024-4096. Let's aim for ~1024-1536 for speed/cost or 2048 for quality.
+        # Replicate defaults to 2K.
+        # Let's use a simple mapping for now.
+        ws_sizes = {
+            "1:1": "1024x1024",
+            "3:4": "896x1152", # approx
+            "4:3": "1152x896",
+            "9:16": "768x1344",
+            "16:9": "1344x768",
+            "21:9": "1536x640",
+            "3:2": "1216x832",
+            "2:3": "832x1216",
+        }
+        ws_size = ws_sizes.get(ratio, "1024x1024")
+
         # 1. Try Wavespeed if configured and balance is sufficient
         if self.wavespeed:
             balance = await self.wavespeed.check_balance()
             if balance >= 0.04:
                 try:
                     self._logger.info("Attempting Wavespeed generation (balance=%.2f)", balance)
-                    # Wavespeed model name for 4.5
+                    # Determine Wavespeed model based on type
+                    ws_model = "bytedance/seedream-v4.5-text-to-image"
+                    if model_type == "edit":
+                        ws_model = "bytedance/seedream-v4.5/edit"
+                    
                     return await self.wavespeed.generate_image(
                         prompt, 
-                        model="bytedance/seedream-v4.5-text-to-image", # or edit if needed
+                        model=ws_model,
+                        size=ws_size,
                         **kwargs
                     )
                 except Exception as e:
@@ -170,6 +197,7 @@ class UnifiedClient:
             return await self.replicate.generate_image(
                 prompt,
                 model="bytedance/seedream-4.5",
+                aspect_ratio=ratio,
                 **kwargs
             )
         

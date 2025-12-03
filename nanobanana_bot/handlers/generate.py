@@ -216,7 +216,8 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateStates.choosing_type)
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    await state.update_data(user_id=message.from_user.id, lang=lang)
+    # Set engine to default
+    await state.update_data(user_id=message.from_user.id, lang=lang, engine="default")
     await message.answer(
         t(lang, "gen.choose_method"),
         reply_markup=type_keyboard(lang),
@@ -239,12 +240,13 @@ async def start_generate_seedream_4_5(message: Message, state: FSMContext) -> No
         return
 
     await state.clear()
-    await state.set_state(GenerateStates.waiting_prompt)
-    await state.update_data(user_id=message.from_user.id, lang=lang, gen_type="seedream_4_5")
+    await state.set_state(GenerateStates.choosing_type)
+    # Set engine to seedream_4_5
+    await state.update_data(user_id=message.from_user.id, lang=lang, engine="seedream_4_5")
     
     await message.answer(
-        t(lang, "gen.enter_prompt"),
-        reply_markup=ForceReply(input_field_placeholder=t(lang, "ph.prompt"), selective=False),
+        t(lang, "gen.choose_method"),
+        reply_markup=type_keyboard(lang),
     )
 
 
@@ -321,21 +323,6 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
             reply_markup=photo_count_keyboard(None, lang),
         )
         _logger.info("User %s chose multi-photo mode", message.from_user.id)
-        return
-    elif gen_type == "seedream_4_5":
-        # Skip ratio selection, go straight to confirmation
-        # Default ratio is 1:1 for now as per requirements/docs
-        await state.update_data(ratio="1:1")
-        
-        summary = (
-            f"{t(lang, 'gen.summary.title')}\n\n"
-            f"{t(lang, 'gen.summary.type', type='Seedream 4.5')}\n"
-            f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
-            f"{t(lang, 'gen.summary.ratio', ratio='1:1')}\n"
-            f"Price: 7 ✨"
-        )
-        await state.set_state(GenerateStates.confirming)
-        await message.answer(summary, reply_markup=confirm_keyboard(lang))
         return
     elif gen_type == "edit_photo":
         # В режиме редактирования фото приходит раньше, сейчас запрашиваем подтверждение сразу,
@@ -753,9 +740,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     avatar_file_path = st.get("avatar_file_path")
     selected_avatars = st.get("selected_avatars") or []
 
+    engine = st.get("engine", "default")
+
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
-    required_tokens = 7 if gen_type == "seedream_4_5" else 3
+    required_tokens = 7 if engine == "seedream_4_5" else 3
     
     if balance < required_tokens:
         lang = st.get("lang")
@@ -844,6 +833,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 "selected_avatars": selected_avatars,
                 "image_size": image_size,
                 "model": model,
+                "engine": engine,
             }
             await _cache.set_attempt_meta(user_id, int(gen_id), attempt_meta)
     except Exception as e:
@@ -873,7 +863,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
     try:
-        _logger.info("Calling API for user=%s gen_id=%s model=%s size=%s images=%s type=%s", user_id, gen_id, model, image_size, len(image_urls), gen_type)
+        _logger.info("Calling API for user=%s gen_id=%s model=%s size=%s images=%s type=%s engine=%s", user_id, gen_id, model, image_size, len(image_urls), gen_type, engine)
         
         # Запускаем фоновую задачу загрузки в R2
         if _r2 and telegram_urls_to_upload:
@@ -881,11 +871,19 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
              # но функция будет перезаливать только telegram ссылки
              asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(image_urls), _r2, _db))
 
-        if gen_type == "seedream_4_5":
+        if engine == "seedream_4_5":
             assert _unified_client is not None
+            # Determine model type for UnifiedClient
+            model_type = "t2i"
+            if len(image_urls) > 0:
+                model_type = "edit"
+            
             image_url = await _unified_client.generate_seedream_4_5(
                 prompt=prompt,
-                # Pass any other needed args
+                model_type=model_type,
+                image_urls=image_urls,
+                ratio=ratio,
+                # Pass other args if needed, e.g. size
             )
         else:
             image_url = await _client.generate_image(
@@ -1055,8 +1053,13 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     photos = meta.get("photos") or []
     avatar_file_path = meta.get("avatar_file_path")
     selected_avatars = meta.get("selected_avatars") or []
+    selected_avatars = meta.get("selected_avatars") or []
+    
+    engine = meta.get("engine", "default")
+    required_tokens = 7 if engine == "seedream_4_5" else 3
+    
     balance = await _db.get_token_balance(user_id)
-    if balance < 4:
+    if balance < required_tokens:
         await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
         await state.clear()
         await callback.answer()
@@ -1145,20 +1148,36 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     # image_urls already prepared above
     pass
     try:
-        image_url = await _client.generate_image(
-            prompt=prompt,
-            model=model,
-            image_urls=image_urls or None,
-            image_size=image_size,
-            image_resolution=image_resolution,
-            max_images=max_images,
-            meta={"generationId": gen_id, "userId": user_id},
-        )
+        _logger.info("Calling API (Repeat) for user=%s gen_id=%s model=%s size=%s images=%s type=%s engine=%s", user_id, gen_id, model, image_size, len(image_urls), gen_type, engine)
+        
+        if engine == "seedream_4_5":
+            assert _unified_client is not None
+            # Determine model type for UnifiedClient
+            model_type = "t2i"
+            if len(image_urls) > 0:
+                model_type = "edit"
+            
+            image_url = await _unified_client.generate_seedream_4_5(
+                prompt=prompt,
+                model_type=model_type,
+                image_urls=image_urls,
+                ratio=ratio,
+            )
+        else:
+            image_url = await _client.generate_image(
+                prompt=prompt,
+                model=model,
+                image_urls=image_urls or None,
+                image_size=image_size,
+                image_resolution=image_resolution,
+                max_images=max_images,
+                meta={"generationId": gen_id, "userId": user_id},
+            )
     except Exception as e:
         msg = str(e)
         if "awaiting callback" in msg:
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 3)
+            new_balance = max(0, int(current_balance) - required_tokens)
             await _db.set_token_balance(user_id, new_balance)
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
@@ -1172,7 +1191,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 3)
+    new_balance = max(0, int(current_balance) - required_tokens)
     await _db.set_token_balance(user_id, new_balance)
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
