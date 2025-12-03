@@ -157,8 +157,8 @@ class UnifiedClient:
         # User requested max possible for 4K (up to 4096px) for Wavespeed
         # and fixed "size": "2K", "aspect_ratio": "match_input_image" for Replicate
         
-        # Wavespeed: use 4096x4096 (or similar high res)
-        ws_size = "4096x4096"
+        # Wavespeed: use 3072x4096 (3:4 aspect ratio, max 4K)
+        ws_size = "3072x4096"
 
         # 1. Try Wavespeed if configured and balance is sufficient
         if self.wavespeed:
