@@ -17,6 +17,9 @@ class Settings:
     # Seedream model names (configurable)
     seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
     seedream_model_edit: str = "bytedance/seedream-v4-edit"
+    # Wavespeed & Replicate
+    wavespeed_api_key: Optional[str] = None
+    replicate_api_token: Optional[str] = None
     # Tribute payments
     tribute_api_key: Optional[str] = None
     tribute_product_map: dict[int, str] = field(default_factory=dict)  # tokens -> product_id (string or numeric)
@@ -82,6 +85,10 @@ def load_settings() -> Settings:
     webhook_path = os.getenv("WEBHOOK_PATH", "/webhook")
     webhook_secret_token = os.getenv("WEBHOOK_SECRET_TOKEN")
 
+    # Wavespeed & Replicate
+    wavespeed_api_key: Optional[str] = None
+    replicate_api_token: Optional[str] = None
+
     if not bot_token:
         raise RuntimeError("BOT_TOKEN is required")
     if not supabase_url or not supabase_key:
@@ -102,4 +109,6 @@ def load_settings() -> Settings:
         webhook_url=webhook_url,
         webhook_path=webhook_path,
         webhook_secret_token=webhook_secret_token,
+        wavespeed_api_key=os.getenv("WAVESPEED_API_KEY"),
+        replicate_api_token=os.getenv("REPLICATE_API_TOKEN"),
     )

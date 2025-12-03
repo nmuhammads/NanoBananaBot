@@ -119,6 +119,9 @@ async def start(message: Message, state: FSMContext) -> None:
                 KeyboardButton(text=t(lang, "kb.generate")),
                 KeyboardButton(text=t(lang, "kb.avatars")),
             ],
+            [
+                KeyboardButton(text=t(lang, "kb.seedream_4_5")),
+            ],
         ],
         resize_keyboard=True,
     )
@@ -183,6 +186,9 @@ async def set_lang(callback: CallbackQuery) -> None:
             [
                 KeyboardButton(text=t(lang, "kb.generate")),
                 KeyboardButton(text=t(lang, "kb.avatars")),
+            ],
+            [
+                KeyboardButton(text=t(lang, "kb.seedream_4_5")),
             ],
         ],
         resize_keyboard=True,

@@ -19,6 +19,8 @@ from ..utils.seedream import SeedreamClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..utils.r2 import R2Client
+from ..utils.providers import UnifiedClient
+from ..config import load_settings
 import logging
 from ..cache import Cache
 import asyncio
@@ -27,6 +29,7 @@ import asyncio
 router = Router(name="generate")
 
 _client: SeedreamClient | None = None
+_unified_client: UnifiedClient | None = None
 _db: Database | None = None
 _cache: Cache | None = None
 _r2: R2Client | None = None
@@ -64,14 +67,15 @@ def _guess_filename(url: str) -> str:
 
 
 def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None, cache: Cache | None = None) -> None:
-    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _cache, _r2
+    global _client, _unified_client, _db, _seedream_model_t2i, _seedream_model_edit, _cache, _r2
     _client = client
     _db = database
     _cache = cache
     _r2 = R2Client()
-    _client = client
-    _db = database
-    _cache = cache
+    
+    settings = load_settings()
+    _unified_client = UnifiedClient(settings.wavespeed_api_key, settings.replicate_api_token)
+
     if isinstance(seedream_model_t2i, str) and seedream_model_t2i.strip():
         _seedream_model_t2i = seedream_model_t2i.strip()
     if isinstance(seedream_model_edit, str) and seedream_model_edit.strip():
@@ -219,6 +223,31 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     )
 
 
+@router.message((F.text == t("ru", "kb.seedream_4_5")) | (F.text == t("en", "kb.seedream_4_5")))
+async def start_generate_seedream_4_5(message: Message, state: FSMContext) -> None:
+    assert _unified_client is not None and _db is not None
+    # Check balance (7 tokens needed)
+    balance = await _db.get_token_balance(message.from_user.id)
+    _logger.info("/seedream_4_5 start user=%s balance=%s", message.from_user.id, balance)
+    
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+
+    if balance < 7:
+        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
+        _logger.warning("User %s has insufficient balance for Seedream 4.5 (need 7)", message.from_user.id)
+        return
+
+    await state.clear()
+    await state.set_state(GenerateStates.waiting_prompt)
+    await state.update_data(user_id=message.from_user.id, lang=lang, gen_type="seedream_4_5")
+    
+    await message.answer(
+        t(lang, "gen.enter_prompt"),
+        reply_markup=ForceReply(input_field_placeholder=t(lang, "ph.prompt"), selective=False),
+    )
+
+
 @router.callback_query(StateFilter(GenerateStates.choosing_type))
 async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
@@ -292,6 +321,21 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
             reply_markup=photo_count_keyboard(None, lang),
         )
         _logger.info("User %s chose multi-photo mode", message.from_user.id)
+        return
+    elif gen_type == "seedream_4_5":
+        # Skip ratio selection, go straight to confirmation
+        # Default ratio is 1:1 for now as per requirements/docs
+        await state.update_data(ratio="1:1")
+        
+        summary = (
+            f"{t(lang, 'gen.summary.title')}\n\n"
+            f"{t(lang, 'gen.summary.type', type='Seedream 4.5')}\n"
+            f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
+            f"{t(lang, 'gen.summary.ratio', ratio='1:1')}\n"
+            f"Price: 7 ✨"
+        )
+        await state.set_state(GenerateStates.confirming)
+        await message.answer(summary, reply_markup=confirm_keyboard(lang))
         return
     elif gen_type == "edit_photo":
         # В режиме редактирования фото приходит раньше, сейчас запрашиваем подтверждение сразу,
@@ -711,12 +755,14 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
-    if balance < 3:
+    required_tokens = 7 if gen_type == "seedream_4_5" else 3
+    
+    if balance < required_tokens:
         lang = st.get("lang")
         await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
         await state.clear()
         await callback.answer()
-        _logger.warning("User %s insufficient balance at confirm (need 3)", user_id)
+        _logger.warning("User %s insufficient balance at confirm (need %s)", user_id, required_tokens)
         return
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
@@ -827,7 +873,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
     try:
-        _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        _logger.info("Calling API for user=%s gen_id=%s model=%s size=%s images=%s type=%s", user_id, gen_id, model, image_size, len(image_urls), gen_type)
         
         # Запускаем фоновую задачу загрузки в R2
         if _r2 and telegram_urls_to_upload:
@@ -835,25 +881,32 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
              # но функция будет перезаливать только telegram ссылки
              asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(image_urls), _r2, _db))
 
-        image_url = await _client.generate_image(
-            prompt=prompt,
-            model=model,
-            image_urls=image_urls or None,
-            image_size=image_size,
-            image_resolution=image_resolution,
-            max_images=max_images,
-            meta={"generationId": gen_id, "userId": user_id},
-        )
+        if gen_type == "seedream_4_5":
+            assert _unified_client is not None
+            image_url = await _unified_client.generate_seedream_4_5(
+                prompt=prompt,
+                # Pass any other needed args
+            )
+        else:
+            image_url = await _client.generate_image(
+                prompt=prompt,
+                model=model,
+                image_urls=image_urls or None,
+                image_size=image_size,
+                image_resolution=image_resolution,
+                max_images=max_images,
+                meta={"generationId": gen_id, "userId": user_id},
+            )
     except Exception as e:
         msg = str(e)
         # Особый случай: провайдер принял задачу и пришлёт результат через callback
         if "awaiting callback" in msg:
             _logger.info("Async generation accepted: user=%s gen_id=%s", user_id, gen_id)
-            # Списание 3 токенов сразу после принятия задачи
+            # Списание токенов сразу после принятия задачи
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 3)
+            new_balance = max(0, int(current_balance) - required_tokens)
             await _db.set_token_balance(user_id, new_balance)
-            _logger.info("Debited 3 tokens (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            _logger.info("Debited %s tokens (async): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
             lang = st.get("lang")
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
@@ -868,11 +921,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    # Списание 3 токенов и сохранение в Supabase (синхронный случай)
+    # Списание токенов и сохранение в Supabase (синхронный случай)
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 3)
+    new_balance = max(0, int(current_balance) - required_tokens)
     await _db.set_token_balance(user_id, new_balance)
-    _logger.info("Debited 3 tokens (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
+    _logger.info("Debited %s tokens (sync): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
 
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
