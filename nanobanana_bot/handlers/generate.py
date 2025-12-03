@@ -44,6 +44,7 @@ class GenerateStates(StatesGroup):
     waiting_photo_count = State()
     waiting_photos = State()
     choosing_ratio = State()
+    choosing_resolution = State()
     confirming = State()
     repeating_confirm = State()
 
@@ -77,8 +78,8 @@ async def restart_generate_any_state(message: Message, state: FSMContext) -> Non
         balance = await _db.get_token_balance(message.from_user.id)
         user = await _db.get_user(message.from_user.id) or {}
         lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-        if balance < 15:
-            await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, required=15))
+        if balance < 10:
+            await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, required=10))
             return
         await start_generate(message, state)
         await state.update_data(preferred_model="nano-banana-pro")
@@ -136,6 +137,15 @@ def ratio_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     if row:
         rows.append(row)
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def resolution_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"2K (10 🍌)", callback_data="res:2K")],
+            [InlineKeyboardButton(text=f"4K (15 🍌)", callback_data="res:4K")],
+        ]
+    )
 
 
 def confirm_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
@@ -473,9 +483,18 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     prompt = st.get("prompt")
     photos = st.get("photos", [])
     photos_needed = st.get("photos_needed")
+    preferred_model = st.get("preferred_model")
 
     st2 = await state.get_data()
     lang = st2.get("lang")
+
+    # If NanoBanana Pro, go to resolution selection
+    if preferred_model == "nano-banana-pro":
+        await state.set_state(GenerateStates.choosing_resolution)
+        await callback.message.edit_text(t(lang, "gen.choose_resolution"), reply_markup=resolution_keyboard(lang))
+        await callback.answer()
+        return
+
     type_map = {
         "text": t(lang, "gen.type.text"),
         "text_photo": t(lang, "gen.type.text_photo"),
@@ -491,6 +510,46 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     )
     if gen_type in {"text_photo", "text_multi"}:
         summary += f"• Фото: {len(photos)} из {photos_needed}"
+
+    await state.set_state(GenerateStates.confirming)
+    await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_resolution), F.data.startswith("res:"))
+async def choose_resolution(callback: CallbackQuery, state: FSMContext) -> None:
+    data = callback.data or ""
+    if not data.startswith("res:"):
+        await callback.answer()
+        return
+    resolution = data.split(":", 1)[1]
+    await state.update_data(resolution=resolution)
+    _logger.info("User %s chose resolution=%s", callback.from_user.id, resolution)
+
+    st = await state.get_data()
+    lang = st.get("lang")
+    gen_type = st.get("gen_type")
+    prompt = st.get("prompt")
+    ratio = st.get("ratio")
+    
+    type_map = {
+        "text": t(lang, "gen.type.text"),
+        "text_photo": t(lang, "gen.type.text_photo"),
+        "text_multi": t(lang, "gen.type.text_multi"),
+    }
+    gen_type_label = type_map.get(gen_type, str(gen_type))
+    
+    # Determine price based on resolution
+    price = 10 if resolution == "2K" else 15
+    await state.update_data(tokens_required=price)
+
+    summary = (
+        f"{t(lang, 'gen.summary.title')}\n\n"
+        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
+        f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
+        f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
+    )
 
     await state.set_state(GenerateStates.confirming)
     await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
@@ -523,7 +582,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Проверка токенов перед запуском (Supabase)
     preferred = str(st.get("preferred_model") or "")
-    required_tokens = 15 if preferred == "nano-banana-pro" else 3
+    # Use stored tokens_required if available (from resolution selection), otherwise default logic
+    stored_tokens = st.get("tokens_required")
+    if stored_tokens:
+        required_tokens = int(stored_tokens)
+    else:
+        required_tokens = 15 if preferred == "nano-banana-pro" else 3
+        
     balance = await _db.get_token_balance(user_id)
     if balance < required_tokens:
         lang = st.get("lang")
@@ -614,6 +679,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             image_size=image_size,
             output_format="png",
             meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
+            resolution=st.get("resolution")
         )
     except Exception as e:
         msg = str(e)

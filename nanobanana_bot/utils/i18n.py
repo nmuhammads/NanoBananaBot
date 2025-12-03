@@ -33,7 +33,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Генерация изображений по тексту\n"
             "• Текст + фото, несколько фото\n"
             "• Редактирование фото ✂️\n\n"
-            "💳 Стоимость: базовая — <b>3 токена</b>, Pro — <b>15 токенов</b> (4K разрешение)\n"
+            "💳 Стоимость: базовая — <b>3 токена</b>, Pro — <b>10 токенов</b> (2K) / <b>15 токенов</b> (4K)\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
         ),
@@ -72,7 +72,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Действия:\n"
             "• Пополнить баланс ✨ — откроет меню пополнения\n"
             "• Базовая генерация 🖼️ — 3 токена\n"
-            "• Nanobanana Pro 🔥 — 15 токенов, 4K\n\n"
+            "• Nanobanana Pro 🔥 — 10/15 токенов (2K/4K)\n\n"
             "Команды: /help"
         ),
 
@@ -122,11 +122,13 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.photo_received": "✅ Фото {idx} из {total} получено.\n📸 Отправьте фото {next} из {total}.",
         "gen.require_photo": "📷 Пожалуйста, отправьте фото {next} из {total}.",
         "gen.choose_ratio": "📐 Выберите соотношение сторон:",
+        "gen.choose_resolution": "📐 Выберите разрешение:",
         "gen.ratio.auto": "Auto (как у исходного фото)",
         "gen.summary.title": "🔍 <b>Проверьте данные перед генерацией</b>",
         "gen.summary.type": "• Тип: {type}",
         "gen.summary.prompt": "• Промпт: {prompt}",
         "gen.summary.ratio": "• Соотношение сторон: {ratio}",
+        "gen.summary.resolution": "• Разрешение: {resolution} ({price} 🍌)",
         "gen.summary.photos": "• Фото: {count} из {needed}",
         "gen.confirm.ok": "✅ Подтвердить",
         "gen.confirm.cancel": "❌ Отмена",
@@ -157,7 +159,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Text-to-image generation\n"
             "• Text + photo, multiple photos\n"
             "• Edit photo ✂️\n\n"
-            "💳 Cost: basic — <b>3 tokens</b>, Pro — <b>15 tokens</b> (4K resolution)\n"
+            "💳 Cost: basic — <b>3 tokens</b>, Pro — <b>10 tokens</b> (2K) / <b>15 tokens</b> (4K)\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
         ),
@@ -196,7 +198,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Actions:\n"
             "• Top up ✨ — opens the top‑up menu\n"
             "• Basic generation 🖼️ — 3 tokens\n"
-            "• Nanobanana Pro 🔥 — 15 tokens, 4K\n\n"
+            "• Nanobanana Pro 🔥 — 10/15 tokens (2K/4K)\n\n"
             "Commands: /help"
         ),
 
@@ -246,11 +248,13 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.photo_received": "✅ Photo {idx} of {total} received.\n📸 Send photo {next} of {total}.",
         "gen.require_photo": "📷 Please send photo {next} of {total}.",
         "gen.choose_ratio": "📐 Choose aspect ratio:",
+        "gen.choose_resolution": "📐 Choose resolution:",
         "gen.ratio.auto": "Auto (same as source photo)",
         "gen.summary.title": "🔍 <b>Review details before generation</b>",
         "gen.summary.type": "• Type: {type}",
         "gen.summary.prompt": "• Prompt: {prompt}",
         "gen.summary.ratio": "• Aspect ratio: {ratio}",
+        "gen.summary.resolution": "• Resolution: {resolution} ({price} 🍌)",
         "gen.summary.photos": "• Photos: {count} of {needed}",
         "gen.confirm.ok": "✅ Confirm",
         "gen.confirm.cancel": "❌ Cancel",

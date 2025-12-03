@@ -30,6 +30,7 @@ class NanoBananaClient:
         image_size: Optional[str] = None,
         output_format: Optional[str] = "png",
         meta: Optional[Dict[str, Any]] = None,
+        resolution: Optional[str] = None,
     ) -> str:
         """
         Calls NanoBanana API to generate an image.
@@ -80,8 +81,10 @@ class NanoBananaClient:
                 input_obj["aspect_ratio"] = image_size
             if image_urls:
                 input_obj["image_input"] = list(input_obj.get("image_urls", []))
-            if "resolution" not in input_obj:
-                input_obj["resolution"] = "4K"
+            if resolution:
+                input_obj["resolution"] = resolution
+            elif "resolution" not in input_obj:
+                input_obj["resolution"] = "2K"
         payload["input"] = input_obj
         if meta:
             payload["meta"] = meta
