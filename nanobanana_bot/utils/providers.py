@@ -37,8 +37,9 @@ class WavespeedClient:
         payload = {
             "prompt": prompt,
             "images": kwargs.get("images", []),
-            "size": kwargs.get("size", "2K"), # Default to 2K as per docs
-            "enable_sync_mode": True # We want the result directly if possible, or handle async if needed
+            "size": kwargs.get("size", "2K").replace("x", "*"), # Ensure * separator
+            "enable_sync_mode": True,
+            "enable_safety_checker": False
         }
         
         self._logger.info("Requesting Wavespeed generation: model=%s", model)
@@ -157,8 +158,8 @@ class UnifiedClient:
         # User requested max possible for 4K (up to 4096px) for Wavespeed
         # and fixed "size": "2K", "aspect_ratio": "match_input_image" for Replicate
         
-        # Wavespeed: use 3072x4096 (3:4 aspect ratio, max 4K)
-        ws_size = "3072x4096"
+        # Wavespeed: use 3072*4096 (3:4 aspect ratio, safe high res, use * separator)
+        ws_size = "3072*4096"
 
         # 1. Try Wavespeed if configured and balance is sufficient
         if self.wavespeed:
@@ -171,10 +172,13 @@ class UnifiedClient:
                     if model_type == "edit":
                         ws_model = "bytedance/seedream-v4.5/edit"
                     
+                    # UnifiedClient receives image_urls, WavespeedClient expects images
+                    # We pass image_urls as images to WavespeedClient
                     return await self.wavespeed.generate_image(
                         prompt, 
                         model=ws_model,
                         size=ws_size,
+                        images=kwargs.get("image_urls", []),
                         **kwargs
                     )
                 except Exception as e:
