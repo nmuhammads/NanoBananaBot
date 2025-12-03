@@ -680,9 +680,13 @@ async def _show_confirmation(message: Message, state: FSMContext, lang: str, gen
     if ratio == "auto":
         ratio_label = t(lang, "gen.ratio.auto")
 
+    engine = st.get("engine", "default")
+    cost = 7 if engine == "seedream_4_5" else 4
+
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.cost', cost=cost)}\n"
         f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
     )
@@ -763,9 +767,13 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     }
     gen_type_label = type_map.get(gen_type, str(gen_type))
 
+    engine = st.get("engine", "default")
+    cost = 7 if engine == "seedream_4_5" else 4
+
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.cost', cost=cost)}\n"
         f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
@@ -817,11 +825,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
-    required_tokens = 7 if engine == "seedream_4_5" else 3
+    required_tokens = 7 if engine == "seedream_4_5" else 4
     
     if balance < required_tokens:
         lang = st.get("lang")
-        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance, cost=required_tokens))
         await state.clear()
         await callback.answer()
         _logger.warning("User %s insufficient balance at confirm (need %s)", user_id, required_tokens)
@@ -1122,9 +1130,13 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     }
     gen_type_label = type_map.get(gen_type, str(gen_type))
     ratio_label = t(lang, "gen.ratio.auto") if ratio == "auto" else ratio
+    engine = meta.get("engine", "default")
+    cost = 7 if engine == "seedream_4_5" else 4
+
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.cost', cost=cost)}\n"
         f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
     )
@@ -1170,11 +1182,11 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     selected_avatars = meta.get("selected_avatars") or []
     
     engine = meta.get("engine", "default")
-    required_tokens = 7 if engine == "seedream_4_5" else 3
+    required_tokens = 7 if engine == "seedream_4_5" else 4
     
     balance = await _db.get_token_balance(user_id)
     if balance < required_tokens:
-        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance, cost=required_tokens))
         await state.clear()
         await callback.answer()
         return
@@ -1208,43 +1220,16 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception as e:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
-    origin_gen_id = meta.get("generationId") # Assuming meta has this or we need to check where it comes from. 
-    # Wait, repeat_meta comes from cache.get_last_success_meta. 
-    # Let's check what set_last_success_meta stores. It stores prompt, gen_type etc.
-    # It seems it DOES NOT store the original generation ID explicitly as 'generationId' in the meta dict passed to set_last_success_meta.
-    # However, get_last_success_meta might return (gen_id, meta) or just meta?
-    # Checking code... get_last_success_meta returns just the meta dict.
-    # The cache key is by user_id.
-    # The previous code for NanoBananaBot used `get_last_generation_attempt` which returned `(origin_gen_id, payload)`.
-    # Here `get_last_success_meta` seems to return just the dict.
-    # We might need to rely on `meta.get("generationId")` if it was stored.
-    # In `confirm` handler: `meta={"generationId": gen_id, "userId": user_id}` is passed to generate_image, but NOT to cache.
-    # Wait, `attempt_meta` in `confirm` does NOT include `generationId`.
-    # BUT `set_last_success_meta` is called at the end of `confirm_repeat` (and presumably `confirm`'s success callback if it existed, but here it's sync/async).
-    # In `confirm` (lines 1020+): `await _cache.set_last_success_meta(user_id, { ... })`. It does NOT include generationId.
-    # This means we might NOT have the parent ID easily available for repeats of *just completed* generations if we only look at cache.
-    # HOWEVER, the user asked to apply the same changes. In NanoBananaBot, `repeat_last_generation` used `_cache.get_last_generation_attempt` which returned an ID.
-    # Here, `repeat_last_generation` uses `_cache.get_last_success_meta`.
-    # If we want to support parent_id, we need to know the ID of the generation being repeated.
-    # If the cache doesn't store it, we can't pass it.
-    # Let's check if I can modify `set_last_success_meta` calls to include it?
-    # In `confirm` (line 715), `attempt_meta` is set. It doesn't have ID.
-    # In `confirm` (line 1021), `set_last_success_meta` is called. It doesn't have ID.
-    # I should update the cache setting logic to include `generationId` or `id`.
-    # But for now, let's assume I can add it to the `create_generation` call if I find it.
-    # If `meta` has `generationId` (maybe I'll add it to cache saving), I'll use it.
-    # For now, I will try to get `id` from meta, defaulting to None.
-    
-    # Actually, looking at `nanobanana_bot` code, `repeat_last_generation` had `origin_gen_id, payload = res`.
-    # Here `meta = await _cache.get_last_success_meta(user_id)`.
-    # I will assume for this task I should just pass `meta.get("id")` or similar if available.
-    # Since I can't easily change the cache structure without verifying `cache.py`, I will try to pass `meta.get("generation_id")` 
-    # and also UPDATE the cache saving in `confirm` to include it.
-    
+    # Трекинг генерации в Supabase
+    db_model_name = "seedream4"
+    if engine == "seedream_4_5":
+        db_model_name = "seedream4.5"
+
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]",
-        input_images=image_urls or None
+        input_images=image_urls or None,
+        model=db_model_name
     )
     gen_id = generation.get("id")
     ratio_map = {
