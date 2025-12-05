@@ -8,6 +8,7 @@ from aiogram.types import (
     ForceReply,
     ReplyKeyboardMarkup,
     KeyboardButton,
+    User,
 )
 from aiogram.types.input_file import URLInputFile
 from urllib.parse import urlparse, parse_qs, unquote
@@ -207,27 +208,31 @@ def avatars_pick_multi_keyboard(items: list[dict], selected_ids: set[int] | None
 
 
 @router.message(Command("generate"))
-async def start_generate(message: Message, state: FSMContext, model_version: str = "v4") -> None:
+async def start_generate(message: Message, state: FSMContext, model_version: str = "v4", from_user: User | None = None) -> None:
     assert _client is not None and _db is not None
+    
+    effective_user = from_user or message.from_user
+    if not effective_user:
+        return
 
     # Determine price based on model version (default v4 is now 4 tokens)
     price = 7 if model_version == "v4.5" else 4
 
     # Проверка токенов в Supabase (баланс хранится только там)
-    balance = await _db.get_token_balance(message.from_user.id)
-    _logger.info("/generate start user=%s balance=%s", message.from_user.id, balance)
+    balance = await _db.get_token_balance(effective_user.id)
+    _logger.info("/generate start user=%s balance=%s", effective_user.id, balance)
     if balance < price:
-        user = await _db.get_user(message.from_user.id) or {}
-        lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+        user = await _db.get_user(effective_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or effective_user.language_code)
         await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, price=price))
-        _logger.warning("User %s has insufficient balance (need %s)", message.from_user.id, price)
+        _logger.warning("User %s has insufficient balance (need %s)", effective_user.id, price)
         return
 
     await state.clear()
     await state.set_state(GenerateStates.choosing_type)
-    user = await _db.get_user(message.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    await state.update_data(user_id=message.from_user.id, lang=lang, model_version=model_version)
+    user = await _db.get_user(effective_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or effective_user.language_code)
+    await state.update_data(user_id=effective_user.id, lang=lang, model_version=model_version)
     await message.answer(
         t(lang, "gen.choose_method"),
         reply_markup=type_keyboard(lang),
@@ -668,7 +673,7 @@ async def choose_model(callback: CallbackQuery, state: FSMContext) -> None:
     
     # Call start_generate with the chosen model version
     # We need to pass the message object from the callback
-    await start_generate(callback.message, state, model_version=model_version)
+    await start_generate(callback.message, state, model_version=model_version, from_user=callback.from_user)
     await callback.answer()
 
 
