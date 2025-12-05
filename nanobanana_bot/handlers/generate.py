@@ -81,6 +81,7 @@ def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | 
         _seedream_model_edit_4_5 = seedream_model_edit_4_5.strip()
 
 class GenerateStates(StatesGroup):
+    choosing_model = State()
     choosing_type = State()
     waiting_prompt = State()
     waiting_photo_count = State()
@@ -90,6 +91,14 @@ class GenerateStates(StatesGroup):
     choosing_avatar = State()
     choosing_avatars_multi = State()
     repeating_confirm = State()
+
+
+def model_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
+    kb = [
+        [InlineKeyboardButton(text=t(lang, "gen.model.v4"), callback_data="model:v4")],
+        [InlineKeyboardButton(text=t(lang, "gen.model.v4_5"), callback_data="model:v4.5")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
 
@@ -258,7 +267,20 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     st0 = await state.get_data()
     lang0 = st0.get("lang")
     if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
-        await start_generate(message, state)
+        await start_generate_text(message, state)
+        return
+    
+    # Filter commands and other menu buttons
+    is_command = text.startswith("/")
+    is_menu = False
+    for l in ["ru", "en"]:
+        if text in {t(l, "kb.profile"), t(l, "kb.topup"), t(l, "kb.avatars"), t(l, "kb.start")}:
+            is_menu = True
+            break
+            
+    if is_command or is_menu:
+        await state.clear()
+        await message.answer(t(lang0, "gen.canceled"))
         return
     prompt = text
     if not prompt:
@@ -586,11 +608,29 @@ async def require_photo(message: Message, state: FSMContext) -> None:
     st = await state.get_data()
     lang = st.get("lang")
     if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
-        await start_generate(message, state)
+        await start_generate_text(message, state)
         return
+
     # Если пользователь открыл главное меню или ввёл /start — не мешаем обработчику старт
-    if text in {t("ru", "kb.start"), t("en", "kb.start")} or text.startswith("/start"):
+    # Также проверяем другие кнопки меню
+    is_menu = False
+    for l in ["ru", "en"]:
+        if text in {t(l, "kb.start"), t(l, "kb.profile"), t(l, "kb.topup"), t(l, "kb.avatars")}:
+            is_menu = True
+            break
+
+    if is_menu or text.startswith("/"):
         # Позволим обработчику /start очистить состояние и показать меню
+        # Для этого просто выходим, но состояние нужно сбросить, если мы хотим чтобы команда сработала?
+        # В require_photo мы не потребляем сообщение (нет F.text в фильтре, только F.photo? Нет, тут StateFilter)
+        # А, этот хендлер ловит ВСЕ сообщения в состоянии waiting_photos (потому что нет фильтра типа F.photo или F.text)
+        # Стоп, выше есть @router.message(StateFilter(GenerateStates.waiting_photos), F.photo)
+        # А этот @router.message(StateFilter(GenerateStates.waiting_photos)) - ловит всё остальное (текст)
+        
+        # Если мы тут, значит это текст.
+        # Если это команда или меню, мы должны отменить текущий процесс.
+        await state.clear()
+        await message.answer(t(lang, "gen.canceled"))
         return
     photos = list(st.get("photos", []))
     photos_needed = int(st.get("photos_needed", 1))
@@ -601,7 +641,15 @@ async def require_photo(message: Message, state: FSMContext) -> None:
 # Текстовый запуск генерации с нижней клавиатуры
 @router.message((F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
 async def start_generate_text(message: Message, state: FSMContext) -> None:
-    await start_generate(message, state)
+    await state.clear()
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    await state.update_data(user_id=message.from_user.id, lang=lang)
+    await state.set_state(GenerateStates.choosing_model)
+    await message.answer(
+        t(lang, "gen.choose_model"),
+        reply_markup=model_keyboard(lang),
+    )
 
 # Запуск генерации по кнопке «Новая генерация»
 @router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")))
@@ -609,10 +657,19 @@ async def start_generate_text_new(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
 
-# Запуск генерации Seedream 4.5
-@router.message((F.text == t("ru", "kb.seedream_4_5")) | (F.text == t("en", "kb.seedream_4_5")))
-async def start_generate_seedream_4_5(message: Message, state: FSMContext) -> None:
-    await start_generate(message, state, model_version="v4.5")
+@router.callback_query(StateFilter(GenerateStates.choosing_model))
+async def choose_model(callback: CallbackQuery, state: FSMContext) -> None:
+    data = callback.data or ""
+    if not data.startswith("model:"):
+        await callback.answer()
+        return
+    model_version = data.split(":", 1)[1]
+    _logger.info("User %s chose model=%s", callback.from_user.id, model_version)
+    
+    # Call start_generate with the chosen model version
+    # We need to pass the message object from the callback
+    await start_generate(callback.message, state, model_version=model_version)
+    await callback.answer()
 
 
 async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str], r2_client: R2Client, db: Database) -> None:

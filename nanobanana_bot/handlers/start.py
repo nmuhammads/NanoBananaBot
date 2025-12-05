@@ -113,7 +113,6 @@ async def start(message: Message, state: FSMContext) -> None:
         keyboard=[
             [
                 KeyboardButton(text=t(lang, "kb.generate")),
-                KeyboardButton(text=t(lang, "kb.seedream_4_5")),
             ],
             [
                 KeyboardButton(text=t(lang, "kb.profile")),
@@ -181,7 +180,6 @@ async def set_lang(callback: CallbackQuery) -> None:
         keyboard=[
             [
                 KeyboardButton(text=t(lang, "kb.generate")),
-                KeyboardButton(text=t(lang, "kb.seedream_4_5")),
             ],
             [
                 KeyboardButton(text=t(lang, "kb.profile")),

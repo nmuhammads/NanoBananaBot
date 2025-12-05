@@ -24,6 +24,11 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.new_generation": "Новая генерация 🖼️",
         "kb.repeat_generation": "Повторить генерацию 🔁",
         "kb.seedream_4_5": "Seedream 4.5 🔥",
+
+        # Model selection
+        "gen.choose_model": "Выберите модель для генерации:",
+        "gen.model.v4": "Seedream 4 (4 🪙)",
+        "gen.model.v4_5": "Seedream 4.5 (7 🪙)",
         "kb.start": "Главное меню",
 
         # Start
@@ -35,7 +40,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Текст + несколько фото/Аватаров ✨ (до 5)\n"
             "• Редактирование фото ✂️\n"
             "• Мои аватары: добавление и удаление 📸\n\n"
-            "💳 Стоимость: <b>4 токена</b> (v4) / <b>7 токенов</b> (v4.5) за изображение\n"
+            "💳 Стоимость:\n"
+            "• Seedream 4: 4 токена\n"
+            "• Seedream 4.5: 7 токенов\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
         ),
@@ -71,7 +78,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Добавляйте стиль, освещение и композицию для лучшего результата\n"
             "• Для фото‑редактирования отправьте фото и выберите «Редактировать фото ✂️»\n"
             "• Соотношение сторон выбирается перед подтверждением\n\n"
-            "Стоимость: 4 токена (v4) / 7 токенов (v4.5) за изображение. Пополнение: /topup"
+            "Стоимость:\n• Seedream 4: 4 токена\n• Seedream 4.5: 7 токенов\nПополнение: /topup"
         ),
 
         # Profile
@@ -202,6 +209,11 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.new_generation": "New generation 🖼️",
         "kb.repeat_generation": "Repeat generation 🔁",
         "kb.seedream_4_5": "Seedream 4.5 🔥",
+
+        # Model selection
+        "gen.choose_model": "Choose a generation model:",
+        "gen.model.v4": "Seedream 4 (4 🪙)",
+        "gen.model.v4_5": "Seedream 4.5 (7 🪙)",
         "kb.start": "Main menu",
 
         # Start
@@ -213,7 +225,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Text + Multiple Photos/Avatars ✨ (up to 5)\n"
             "• Edit photo ✂️\n"
             "• Manage avatars: add & delete 📸\n\n"
-            "💳 Cost: <b>4 tokens</b> (v4) / <b>7 tokens</b> (v4.5) per image\n"
+            "💳 Cost:\n"
+            "• Seedream 4: 4 tokens\n"
+            "• Seedream 4.5: 7 tokens\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
         ),
@@ -249,7 +263,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Add style, lighting and composition for better results\n"
             "• For photo editing send a photo and choose ‘Edit Photo ✂️’\n"
             "• Aspect ratio is chosen right before confirmation\n\n"
-            "Cost: 4 tokens (v4) / 7 tokens (v4.5) per image. Top up: /topup"
+            "Cost:\n• Seedream 4: 4 tokens\n• Seedream 4.5: 7 tokens\nTop up: /topup"
         ),
 
         # Profile
