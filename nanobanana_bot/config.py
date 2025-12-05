@@ -17,6 +17,8 @@ class Settings:
     # Seedream model names (configurable)
     seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
     seedream_model_edit: str = "bytedance/seedream-v4-edit"
+    seedream_model_t2i_4_5: str = "seedream/4.5-text-to-image"
+    seedream_model_edit_4_5: str = "seedream/4.5-edit"
     # Tribute payments
     tribute_api_key: Optional[str] = None
     tribute_product_map: dict[int, str] = field(default_factory=dict)  # tokens -> product_id (string or numeric)
@@ -44,6 +46,8 @@ def load_settings() -> Settings:
     # Seedream model names
     seedream_model_t2i = os.getenv("SEEDREAM_MODEL_T2I", "bytedance/seedream-v4-text-to-image")
     seedream_model_edit = os.getenv("SEEDREAM_MODEL_EDIT", "bytedance/seedream-v4-edit")
+    seedream_model_t2i_4_5 = os.getenv("SEEDREAM_MODEL_T2I_4_5", "seedream/4.5-text-to-image")
+    seedream_model_edit_4_5 = os.getenv("SEEDREAM_MODEL_EDIT_4_5", "seedream/4.5-edit")
     # Tribute payments
     tribute_api_key = os.getenv("TRIBUTE_API_KEY")
     tribute_product_map_raw = os.getenv("TRIBUTE_PRODUCT_MAP", "{}")
@@ -96,6 +100,8 @@ def load_settings() -> Settings:
         seedream_api_key=seedream_api_key,
         seedream_model_t2i=seedream_model_t2i,
         seedream_model_edit=seedream_model_edit,
+        seedream_model_t2i_4_5=seedream_model_t2i_4_5,
+        seedream_model_edit_4_5=seedream_model_edit_4_5,
         tribute_api_key=tribute_api_key,
         tribute_product_map=tribute_product_map,
         request_timeout_seconds=request_timeout_seconds,

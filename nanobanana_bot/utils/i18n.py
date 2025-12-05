@@ -23,6 +23,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.avatars": "Мои аватары 📸",
         "kb.new_generation": "Новая генерация 🖼️",
         "kb.repeat_generation": "Повторить генерацию 🔁",
+        "kb.seedream_4_5": "Seedream 4.5 🔥",
         "kb.start": "Главное меню",
 
         # Start
@@ -34,7 +35,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Текст + несколько фото/Аватаров ✨ (до 5)\n"
             "• Редактирование фото ✂️\n"
             "• Мои аватары: добавление и удаление 📸\n\n"
-            "💳 Стоимость: <b>3 токена</b> за изображение\n"
+            "💳 Стоимость: <b>4 токена</b> (v4) / <b>7 токенов</b> (v4.5) за изображение\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
         ),
@@ -70,7 +71,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Добавляйте стиль, освещение и композицию для лучшего результата\n"
             "• Для фото‑редактирования отправьте фото и выберите «Редактировать фото ✂️»\n"
             "• Соотношение сторон выбирается перед подтверждением\n\n"
-            "Стоимость: 3 токена за изображение. Пополнение: /topup"
+            "Стоимость: 4 токена (v4) / 7 токенов (v4.5) за изображение. Пополнение: /topup"
         ),
 
         # Profile
@@ -153,7 +154,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirm.ok": "✅ Подтвердить",
         "gen.confirm.cancel": "❌ Отмена",
         "gen.canceled": "Генерация отменена.",
-        "gen.not_enough_tokens": "Нужно 3 токена. Ваш баланс: {balance}.\nПополнить: /topup",
+        "gen.not_enough_tokens": "Нужно {price} токенов. Ваш баланс: {balance}.\nПополнить: /topup",
         "gen.done_text": "✨ Готово! Остаток: {balance}\nСоотношение: {ratio}",
         "gen.result_caption": "Результат ✨",
         "gen.task_accepted": "Задача отправлена. Результат скоро будет здесь ✨",
@@ -164,10 +165,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Возврат 3 токенов. Баланс: {balance}\n"
             "Сократите текст и попробуйте снова."
         ),
-        "gen.failed.generic": (
             "❗️ Генерация не удалась. Причина: {reason}.\n"
-            "Возврат 3 токенов. Баланс: {balance}"
-        ),
+            "Возврат средств. Баланс: {balance}"
         "gen.unknown_type": "Неизвестный тип генерации. Начните заново: /generate",
         
         # Avatars
@@ -202,6 +201,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.avatars": "My Avatars 📸",
         "kb.new_generation": "New generation 🖼️",
         "kb.repeat_generation": "Repeat generation 🔁",
+        "kb.seedream_4_5": "Seedream 4.5 🔥",
         "kb.start": "Main menu",
 
         # Start
@@ -213,7 +213,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Text + Multiple Photos/Avatars ✨ (up to 5)\n"
             "• Edit photo ✂️\n"
             "• Manage avatars: add & delete 📸\n\n"
-            "💳 Cost: <b>3 tokens</b> per image\n"
+            "💳 Cost: <b>4 tokens</b> (v4) / <b>7 tokens</b> (v4.5) per image\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
         ),
@@ -249,7 +249,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Add style, lighting and composition for better results\n"
             "• For photo editing send a photo and choose ‘Edit Photo ✂️’\n"
             "• Aspect ratio is chosen right before confirmation\n\n"
-            "Cost: 3 tokens per image. Top up: /topup"
+            "Cost: 4 tokens (v4) / 7 tokens (v4.5) per image. Top up: /topup"
         ),
 
         # Profile
@@ -332,7 +332,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.confirm.ok": "✅ Confirm",
         "gen.confirm.cancel": "❌ Cancel",
         "gen.canceled": "Generation cancelled.",
-        "gen.not_enough_tokens": "Needs 3 tokens. Your balance: {balance}.\nTop up: /topup",
+        "gen.not_enough_tokens": "Needs {price} tokens. Your balance: {balance}.\nTop up: /topup",
         "gen.done_text": "✨ Done! Balance left: {balance}\nAspect ratio: {ratio}",
         "gen.result_caption": "Result ✨",
         "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
@@ -343,10 +343,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Refunded 3 tokens. Balance: {balance}\n"
             "Please shorten the prompt and try again."
         ),
-        "gen.failed.generic": (
             "❗️ Generation failed. Reason: {reason}.\n"
-            "Refunded 3 tokens. Balance: {balance}"
-        ),
+            "Refunded. Balance: {balance}"
         "gen.unknown_type": "Unknown generation type. Start over: /generate",
 
         # Avatars

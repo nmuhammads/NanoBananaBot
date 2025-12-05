@@ -31,6 +31,8 @@ _db: Database | None = None
 _cache: Cache | None = None
 _r2: R2Client | None = None
 _seedream_model_t2i: str = "bytedance/seedream-v4-text-to-image"
+_seedream_model_t2i_4_5: str = "seedream/4.5-text-to-image"
+_seedream_model_edit_4_5: str = "seedream/4.5-edit"
 _seedream_model_edit: str = "bytedance/seedream-v4-edit"
 _logger = logging.getLogger("seedream.generate")
 
@@ -63,19 +65,20 @@ def _guess_filename(url: str) -> str:
     return "seedream.png"
 
 
-def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None, cache: Cache | None = None) -> None:
-    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _cache, _r2
+def setup(client: SeedreamClient, database: Database, seedream_model_t2i: str | None = None, seedream_model_edit: str | None = None, seedream_model_t2i_4_5: str | None = None, seedream_model_edit_4_5: str | None = None, cache: Cache | None = None) -> None:
+    global _client, _db, _seedream_model_t2i, _seedream_model_edit, _seedream_model_t2i_4_5, _seedream_model_edit_4_5, _cache, _r2
     _client = client
     _db = database
     _cache = cache
     _r2 = R2Client()
-    _client = client
-    _db = database
-    _cache = cache
     if isinstance(seedream_model_t2i, str) and seedream_model_t2i.strip():
         _seedream_model_t2i = seedream_model_t2i.strip()
     if isinstance(seedream_model_edit, str) and seedream_model_edit.strip():
         _seedream_model_edit = seedream_model_edit.strip()
+    if isinstance(seedream_model_t2i_4_5, str) and seedream_model_t2i_4_5.strip():
+        _seedream_model_t2i_4_5 = seedream_model_t2i_4_5.strip()
+    if isinstance(seedream_model_edit_4_5, str) and seedream_model_edit_4_5.strip():
+        _seedream_model_edit_4_5 = seedream_model_edit_4_5.strip()
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
@@ -195,24 +198,27 @@ def avatars_pick_multi_keyboard(items: list[dict], selected_ids: set[int] | None
 
 
 @router.message(Command("generate"))
-async def start_generate(message: Message, state: FSMContext) -> None:
+async def start_generate(message: Message, state: FSMContext, model_version: str = "v4") -> None:
     assert _client is not None and _db is not None
+
+    # Determine price based on model version (default v4 is now 4 tokens)
+    price = 7 if model_version == "v4.5" else 4
 
     # Проверка токенов в Supabase (баланс хранится только там)
     balance = await _db.get_token_balance(message.from_user.id)
     _logger.info("/generate start user=%s balance=%s", message.from_user.id, balance)
-    if balance < 3:
+    if balance < price:
         user = await _db.get_user(message.from_user.id) or {}
         lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance))
-        _logger.warning("User %s has insufficient balance (need 3)", message.from_user.id)
+        await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, price=price))
+        _logger.warning("User %s has insufficient balance (need %s)", message.from_user.id, price)
         return
 
     await state.clear()
     await state.set_state(GenerateStates.choosing_type)
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    await state.update_data(user_id=message.from_user.id, lang=lang)
+    await state.update_data(user_id=message.from_user.id, lang=lang, model_version=model_version)
     await message.answer(
         t(lang, "gen.choose_method"),
         reply_markup=type_keyboard(lang),
@@ -603,6 +609,12 @@ async def start_generate_text_new(message: Message, state: FSMContext) -> None:
     await start_generate(message, state)
 
 
+# Запуск генерации Seedream 4.5
+@router.message((F.text == t("ru", "kb.seedream_4_5")) | (F.text == t("en", "kb.seedream_4_5")))
+async def start_generate_seedream_4_5(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state, model_version="v4.5")
+
+
 async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str], r2_client: R2Client, db: Database) -> None:
     """
     Background task to upload images to R2 and update the database.
@@ -708,15 +720,19 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     photos = st.get("photos", [])
     avatar_file_path = st.get("avatar_file_path")
     selected_avatars = st.get("selected_avatars") or []
+    model_version = st.get("model_version", "v4")
+
+    # Determine price based on model version
+    price = 7 if model_version == "v4.5" else 4
 
     # Проверка токенов перед запуском (Supabase)
     balance = await _db.get_token_balance(user_id)
-    if balance < 3:
+    if balance < price:
         lang = st.get("lang")
-        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance, price=price))
         await state.clear()
         await callback.answer()
-        _logger.warning("User %s insufficient balance at confirm (need 3)", user_id)
+        _logger.warning("User %s insufficient balance at confirm (need %s)", user_id, price)
         return
 
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
@@ -755,14 +771,14 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
     # Трекинг генерации в Supabase
-    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}"
+    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}; model={model_version}"
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]",
         input_images=image_urls or None
     )
     gen_id = generation.get("id")
-    _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio, len(photos))
+    _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s model=%s", gen_id, user_id, gen_type, ratio, len(photos), model_version)
 
     # Подготовка параметров KIE API
     # Seedream image_size значения (перекодировка из выбора ratio)
@@ -778,11 +794,18 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     }
     # Для auto не задаём image_size, чтобы провайдер сохранил исходное соотношение
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
-    # Разрешение и количество изображений по умолчанию
+    
+    # Model selection and parameters
+    quality = None
     image_resolution = "4K"
     max_images = 1
-    # Выбор модели: Seedream V4 — для текстовой генерации и редактирования (из конфига)
-    model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
+    
+    if model_version == "v4.5":
+        model = _seedream_model_edit_4_5 if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i_4_5
+        quality = "high"
+        image_resolution = None # 4.5 uses quality
+    else:
+        model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
 
     # Сохраним параметры попытки генерации в кэше для возможного повторения
     try:
@@ -792,12 +815,14 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 "gen_type": gen_type,
                 "ratio": ratio,
                 "image_resolution": image_resolution,
+                "quality": quality,
                 "max_images": max_images,
                 "photos": photos,
                 "avatar_file_path": avatar_file_path,
                 "selected_avatars": selected_avatars,
                 "image_size": image_size,
                 "model": model,
+                "model_version": model_version,
             }
             await _cache.set_attempt_meta(user_id, int(gen_id), attempt_meta)
     except Exception as e:
@@ -841,6 +866,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             image_urls=image_urls or None,
             image_size=image_size,
             image_resolution=image_resolution,
+            quality=quality,
             max_images=max_images,
             meta={"generationId": gen_id, "userId": user_id},
         )
@@ -849,11 +875,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         # Особый случай: провайдер принял задачу и пришлёт результат через callback
         if "awaiting callback" in msg:
             _logger.info("Async generation accepted: user=%s gen_id=%s", user_id, gen_id)
-            # Списание 3 токенов сразу после принятия задачи
+            # Списание токенов сразу после принятия задачи
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 3)
+            new_balance = max(0, int(current_balance) - price)
             await _db.set_token_balance(user_id, new_balance)
-            _logger.info("Debited 3 tokens (async): user=%s balance %s->%s", user_id, current_balance, new_balance)
+            _logger.info("Debited %s tokens (async): user=%s balance %s->%s", price, user_id, current_balance, new_balance)
             lang = st.get("lang")
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
@@ -868,11 +894,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    # Списание 3 токенов и сохранение в Supabase (синхронный случай)
+    # Списание токенов и сохранение в Supabase (синхронный случай)
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 3)
+    new_balance = max(0, int(current_balance) - price)
     await _db.set_token_balance(user_id, new_balance)
-    _logger.info("Debited 3 tokens (sync): user=%s balance %s->%s", user_id, current_balance, new_balance)
+    _logger.info("Debited %s tokens (sync): user=%s balance %s->%s", price, user_id, current_balance, new_balance)
 
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
@@ -904,12 +930,14 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 "gen_type": gen_type,
                 "ratio": ratio,
                 "image_resolution": image_resolution,
+                "quality": quality,
                 "max_images": max_images,
                 "photos": photos,
                 "avatar_file_path": avatar_file_path,
                 "selected_avatars": selected_avatars,
                 "image_size": image_size,
                 "model": model,
+                "model_version": model_version,
             })
     except Exception as e:
         _logger.warning("Failed to cache last success meta user=%s gen_id=%s: %s", user_id, gen_id, e)
@@ -995,6 +1023,9 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     gen_type = meta.get("gen_type") or "text"
     ratio = meta.get("ratio") or "auto"
     image_resolution = meta.get("image_resolution") or "2K"
+    quality = meta.get("quality")
+    model_version = meta.get("model_version", "v4")
+    
     try:
         max_images = int(meta.get("max_images") or 1)
     except Exception:
@@ -1002,13 +1033,17 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     photos = meta.get("photos") or []
     avatar_file_path = meta.get("avatar_file_path")
     selected_avatars = meta.get("selected_avatars") or []
+    
+    # Determine price based on model version
+    price = 7 if model_version == "v4.5" else 4
+    
     balance = await _db.get_token_balance(user_id)
-    if balance < 4:
-        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance))
+    if balance < price:
+        await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance, price=price))
         await state.clear()
         await callback.answer()
         return
-    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}"
+    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}; model={model_version}"
     
     image_urls = []
     if len(photos) > 0:
@@ -1038,39 +1073,6 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception as e:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
-    origin_gen_id = meta.get("generationId") # Assuming meta has this or we need to check where it comes from. 
-    # Wait, repeat_meta comes from cache.get_last_success_meta. 
-    # Let's check what set_last_success_meta stores. It stores prompt, gen_type etc.
-    # It seems it DOES NOT store the original generation ID explicitly as 'generationId' in the meta dict passed to set_last_success_meta.
-    # However, get_last_success_meta might return (gen_id, meta) or just meta?
-    # Checking code... get_last_success_meta returns just the meta dict.
-    # The cache key is by user_id.
-    # The previous code for NanoBananaBot used `get_last_generation_attempt` which returned `(origin_gen_id, payload)`.
-    # Here `get_last_success_meta` seems to return just the dict.
-    # We might need to rely on `meta.get("generationId")` if it was stored.
-    # In `confirm` handler: `meta={"generationId": gen_id, "userId": user_id}` is passed to generate_image, but NOT to cache.
-    # Wait, `attempt_meta` in `confirm` does NOT include `generationId`.
-    # BUT `set_last_success_meta` is called at the end of `confirm_repeat` (and presumably `confirm`'s success callback if it existed, but here it's sync/async).
-    # In `confirm` (lines 1020+): `await _cache.set_last_success_meta(user_id, { ... })`. It does NOT include generationId.
-    # This means we might NOT have the parent ID easily available for repeats of *just completed* generations if we only look at cache.
-    # HOWEVER, the user asked to apply the same changes. In NanoBananaBot, `repeat_last_generation` used `_cache.get_last_generation_attempt` which returned an ID.
-    # Here, `repeat_last_generation` uses `_cache.get_last_success_meta`.
-    # If we want to support parent_id, we need to know the ID of the generation being repeated.
-    # If the cache doesn't store it, we can't pass it.
-    # Let's check if I can modify `set_last_success_meta` calls to include it?
-    # In `confirm` (line 715), `attempt_meta` is set. It doesn't have ID.
-    # In `confirm` (line 1021), `set_last_success_meta` is called. It doesn't have ID.
-    # I should update the cache setting logic to include `generationId` or `id`.
-    # But for now, let's assume I can add it to the `create_generation` call if I find it.
-    # If `meta` has `generationId` (maybe I'll add it to cache saving), I'll use it.
-    # For now, I will try to get `id` from meta, defaulting to None.
-    
-    # Actually, looking at `nanobanana_bot` code, `repeat_last_generation` had `origin_gen_id, payload = res`.
-    # Here `meta = await _cache.get_last_success_meta(user_id)`.
-    # I will assume for this task I should just pass `meta.get("id")` or similar if available.
-    # Since I can't easily change the cache structure without verifying `cache.py`, I will try to pass `meta.get("generation_id")` 
-    # and also UPDATE the cache saving in `confirm` to include it.
-    
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]",
@@ -1088,9 +1090,13 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         "2:3": "portrait_3_2",
     }
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
-    model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
-    # image_urls already prepared above
-    pass
+    
+    # Model logic
+    if model_version == "v4.5":
+        model = _seedream_model_edit_4_5 if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i_4_5
+    else:
+        model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
+
     try:
         image_url = await _client.generate_image(
             prompt=prompt,
@@ -1098,6 +1104,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
             image_urls=image_urls or None,
             image_size=image_size,
             image_resolution=image_resolution,
+            quality=quality,
             max_images=max_images,
             meta={"generationId": gen_id, "userId": user_id},
         )
@@ -1105,7 +1112,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         msg = str(e)
         if "awaiting callback" in msg:
             current_balance = await _db.get_token_balance(user_id)
-            new_balance = max(0, int(current_balance) - 3)
+            new_balance = max(0, int(current_balance) - price)
             await _db.set_token_balance(user_id, new_balance)
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
@@ -1119,7 +1126,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     current_balance = await _db.get_token_balance(user_id)
-    new_balance = max(0, int(current_balance) - 3)
+    new_balance = max(0, int(current_balance) - price)
     await _db.set_token_balance(user_id, new_balance)
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
@@ -1138,12 +1145,14 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
                 "gen_type": gen_type,
                 "ratio": ratio,
                 "image_resolution": image_resolution,
+                "quality": quality,
                 "max_images": max_images,
                 "photos": photos,
                 "avatar_file_path": avatar_file_path,
                 "selected_avatars": selected_avatars,
                 "image_size": image_size,
                 "model": model,
+                "model_version": model_version,
             })
     except Exception as e:
         _logger.warning("Failed to cache last success meta (repeat) user=%s gen_id=%s: %s", user_id, gen_id, e)
