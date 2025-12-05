@@ -166,6 +166,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.failed.generic": "Не удалось запустить генерацию. Попробуйте позже. Токены возвращены.",
         "gen.failed.max_length": "⚠️ Ошибка: Длина запроса превышает лимит (максимум 1000 символов). Пожалуйста, сократите текст.",
         "gen.task_accepted": "Задача принята в обработку! Ожидайте результат... скоро будет здесь ✨",
+        "gen.result_caption": "✨ Ваше изображение готово!",
         "gen.repeat_not_found": "Нет недавней успешной генерации для повторения.",
         # Failure handling
         "gen.failed.prompt_too_long": (
@@ -352,6 +353,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.failed.generic": "Failed to start generation. Please try again later. Tokens refunded.",
         "gen.failed.max_length": "⚠️ Error: Prompt length exceeds the limit (max 1000 characters). Please shorten your text.",
         "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
+        "gen.result_caption": "✨ Your image is ready!",
         "gen.repeat_not_found": "No recent successful generation to repeat.",
         # Failure handling
         "gen.failed.prompt_too_long": (

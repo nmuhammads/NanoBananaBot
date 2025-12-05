@@ -858,8 +858,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
     
     aspect_ratio = None
-    if model_version == "v4.5" and ratio != "auto":
-        aspect_ratio = ratio
+    if model_version == "v4.5":
+        if ratio == "auto":
+            # Fallback for auto ratio on 4.5 which requires explicit ratio
+            aspect_ratio = "1:1"
+        else:
+            aspect_ratio = ratio
     
     # Model selection and parameters
     quality = None
@@ -916,6 +920,19 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 image_urls.append(signed_url)
         except Exception as e:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
+
+            _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
+
+    # Safeguard: If using an Edit model (v4 or v4.5), image_urls MUST be present.
+    # If Telegram failed to give us a URL, we must abort to avoid API error "This field is required".
+    is_edit_model = "edit" in (model or "").lower()
+    if is_edit_model and not image_urls:
+        _logger.error("Aborting generation: Edit model selected but no image_urls available. user=%s", user_id)
+        lang = st.get("lang")
+        await callback.message.answer(t(lang, "gen.failed.generic")) # Or a more specific error if we had one
+        await state.clear()
+        await callback.answer()
+        return
 
     try:
         _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
@@ -1173,8 +1190,11 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
     
     aspect_ratio = None
-    if model_version == "v4.5" and ratio != "auto":
-        aspect_ratio = ratio
+    if model_version == "v4.5":
+        if ratio == "auto":
+            aspect_ratio = "1:1"
+        else:
+            aspect_ratio = ratio
     
     # Model logic
     if model_version == "v4.5":
