@@ -948,10 +948,24 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             await callback.answer("Started")
             return
 
-        if gen_id is not None:
-            await _db.mark_generation_failed(gen_id, str(e))
-        await callback.message.edit_text(f"Ошибка генерации: {e}")
-        _logger.exception("Generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
+        # Handle specific errors
+        lang = st.get("lang")
+        if "text length cannot exceed" in msg.lower():
+            await callback.message.answer(t(lang, "gen.failed.max_length"))
+            # Mark generation as failed in DB
+            await _db.update_generation_status(int(gen_id), "failed", error=msg)
+            await state.clear()
+            await callback.answer()
+            return
+
+        # Generic error handling
+        _logger.error("Generation failed user=%s gen_id=%s error=%s", user_id, gen_id, msg)
+        await _db.update_generation_status(int(gen_id), "failed", error=msg)
+        
+        # Возврат средств не нужен, так как списание происходит ТОЛЬКО при успехе (в синхронном блоке try)
+        # или при "awaiting callback". Если мы тут — списания не было.
+        
+        await callback.message.answer(t(lang, "gen.failed.generic"))
         await state.clear()
         await callback.answer()
         return

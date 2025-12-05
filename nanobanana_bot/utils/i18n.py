@@ -163,8 +163,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.canceled": "Генерация отменена.",
         "gen.not_enough_tokens": "Нужно {price} токенов. Ваш баланс: {balance}.\nПополнить: /topup",
         "gen.done_text": "✨ Готово! Остаток: {balance}\nСоотношение: {ratio}",
-        "gen.result_caption": "Результат ✨",
-        "gen.task_accepted": "Задача отправлена. Результат скоро будет здесь ✨",
+        "gen.failed.generic": "Не удалось запустить генерацию. Попробуйте позже. Токены возвращены.",
+        "gen.failed.max_length": "⚠️ Ошибка: Длина запроса превышает лимит (максимум 1000 символов). Пожалуйста, сократите текст.",
+        "gen.task_accepted": "Задача принята в обработку! Ожидайте результат... скоро будет здесь ✨",
         "gen.repeat_not_found": "Нет недавней успешной генерации для повторения.",
         # Failure handling
         "gen.failed.prompt_too_long": (
@@ -348,7 +349,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.canceled": "Generation cancelled.",
         "gen.not_enough_tokens": "Needs {price} tokens. Your balance: {balance}.\nTop up: /topup",
         "gen.done_text": "✨ Done! Balance left: {balance}\nAspect ratio: {ratio}",
-        "gen.result_caption": "Result ✨",
+        "gen.failed.generic": "Failed to start generation. Please try again later. Tokens refunded.",
+        "gen.failed.max_length": "⚠️ Error: Prompt length exceeds the limit (max 1000 characters). Please shorten your text.",
         "gen.task_accepted": "Task sent to bot. The result will arrive here shortly.",
         "gen.repeat_not_found": "No recent successful generation to repeat.",
         # Failure handling
