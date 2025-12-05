@@ -25,6 +25,8 @@ class SeedreamClient:
         image_urls: Optional[List[str]] = None,
         image_size: Optional[str] = None,
         image_resolution: Optional[str] = None,
+        quality: Optional[str] = None,
+        aspect_ratio: Optional[str] = None,
         max_images: Optional[int] = None,
         meta: Optional[Dict[str, Any]] = None,
     ) -> str:
@@ -49,10 +51,16 @@ class SeedreamClient:
         # Seedream V4 (KIE) input mapping
         is_seedream = isinstance(payload.get("model"), str) and "seedream" in str(payload.get("model")).lower()
         if is_seedream:
-            if image_size:
+            if aspect_ratio:
+                input_obj["aspect_ratio"] = aspect_ratio
+            # Only send image_size if aspect_ratio is NOT set, or if we want to support both (usually mutually exclusive)
+            elif image_size:
                 input_obj["image_size"] = image_size
+            
             if image_resolution:
                 input_obj["image_resolution"] = image_resolution
+            if quality:
+                input_obj["quality"] = quality
             if isinstance(max_images, int) and 1 <= max_images <= 6:
                 input_obj["max_images"] = max_images
             # KIE API expects 'image_urls' for edit flows when a reference image is provided

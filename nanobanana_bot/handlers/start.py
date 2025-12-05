@@ -112,12 +112,14 @@ async def start(message: Message, state: FSMContext) -> None:
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text=t(lang, "kb.profile")),
-                KeyboardButton(text=t(lang, "kb.topup")),
+                KeyboardButton(text=t(lang, "kb.generate")),
             ],
             [
-                KeyboardButton(text=t(lang, "kb.generate")),
+                KeyboardButton(text=t(lang, "kb.profile")),
                 KeyboardButton(text=t(lang, "kb.avatars")),
+            ],
+            [
+                KeyboardButton(text=t(lang, "kb.topup")),
             ],
         ],
         resize_keyboard=True,
@@ -177,12 +179,14 @@ async def set_lang(callback: CallbackQuery) -> None:
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text=t(lang, "kb.profile")),
-                KeyboardButton(text=t(lang, "kb.topup")),
+                KeyboardButton(text=t(lang, "kb.generate")),
             ],
             [
-                KeyboardButton(text=t(lang, "kb.generate")),
+                KeyboardButton(text=t(lang, "kb.profile")),
                 KeyboardButton(text=t(lang, "kb.avatars")),
+            ],
+            [
+                KeyboardButton(text=t(lang, "kb.topup")),
             ],
         ],
         resize_keyboard=True,
