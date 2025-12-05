@@ -857,6 +857,10 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     # Для auto не задаём image_size, чтобы провайдер сохранил исходное соотношение
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
     
+    aspect_ratio = None
+    if model_version == "v4.5" and ratio != "auto":
+        aspect_ratio = ratio
+    
     # Model selection and parameters
     quality = None
     image_resolution = "4K"
@@ -929,6 +933,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             image_size=image_size,
             image_resolution=image_resolution,
             quality=quality,
+            aspect_ratio=aspect_ratio,
             max_images=max_images,
             meta={"generationId": gen_id, "userId": user_id},
         )
@@ -953,14 +958,14 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         if "text length cannot exceed" in msg.lower():
             await callback.message.answer(t(lang, "gen.failed.max_length"))
             # Mark generation as failed in DB
-            await _db.update_generation_status(int(gen_id), "failed", error=msg)
+            await _db.mark_generation_failed(int(gen_id), msg)
             await state.clear()
             await callback.answer()
             return
 
         # Generic error handling
         _logger.error("Generation failed user=%s gen_id=%s error=%s", user_id, gen_id, msg)
-        await _db.update_generation_status(int(gen_id), "failed", error=msg)
+        await _db.mark_generation_failed(int(gen_id), msg)
         
         # Возврат средств не нужен, так как списание происходит ТОЛЬКО при успехе (в синхронном блоке try)
         # или при "awaiting callback". Если мы тут — списания не было.
@@ -1167,6 +1172,10 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     }
     image_size = ratio_map.get(ratio) if ratio in ratio_map else None
     
+    aspect_ratio = None
+    if model_version == "v4.5" and ratio != "auto":
+        aspect_ratio = ratio
+    
     # Model logic
     if model_version == "v4.5":
         model = _seedream_model_edit_4_5 if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i_4_5
@@ -1181,6 +1190,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
             image_size=image_size,
             image_resolution=image_resolution,
             quality=quality,
+            aspect_ratio=aspect_ratio,
             max_images=max_images,
             meta={"generationId": gen_id, "userId": user_id},
         )

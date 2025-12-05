@@ -26,6 +26,7 @@ class SeedreamClient:
         image_size: Optional[str] = None,
         image_resolution: Optional[str] = None,
         quality: Optional[str] = None,
+        aspect_ratio: Optional[str] = None,
         max_images: Optional[int] = None,
         meta: Optional[Dict[str, Any]] = None,
     ) -> str:
@@ -50,8 +51,12 @@ class SeedreamClient:
         # Seedream V4 (KIE) input mapping
         is_seedream = isinstance(payload.get("model"), str) and "seedream" in str(payload.get("model")).lower()
         if is_seedream:
-            if image_size:
+            if aspect_ratio:
+                input_obj["aspect_ratio"] = aspect_ratio
+            # Only send image_size if aspect_ratio is NOT set, or if we want to support both (usually mutually exclusive)
+            elif image_size:
                 input_obj["image_size"] = image_size
+            
             if image_resolution:
                 input_obj["image_resolution"] = image_resolution
             if quality:
