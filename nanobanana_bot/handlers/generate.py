@@ -834,10 +834,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Трекинг генерации в Supabase
     payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={len(selected_avatars) + (1 if avatar_file_path else 0)}; model={model_version}"
+    
+    db_model_name = "seedream4.5" if model_version == "v4.5" else "seedream4"
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]",
-        input_images=image_urls or None
+        input_images=image_urls or None,
+        model=db_model_name
     )
     gen_id = generation.get("id")
     _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s model=%s", gen_id, user_id, gen_type, ratio, len(photos), model_version)
@@ -1171,10 +1174,12 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception as e:
             _logger.warning("Failed to create signed URL for avatar %s: %s", avatar_file_path, e)
 
+    db_model_name = "seedream4.5" if model_version == "v4.5" else "seedream4"
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]",
-        input_images=image_urls or None
+        input_images=image_urls or None,
+        model=db_model_name
     )
     gen_id = generation.get("id")
     ratio_map = {

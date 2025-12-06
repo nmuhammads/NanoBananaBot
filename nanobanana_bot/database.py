@@ -79,12 +79,13 @@ class Database:
         prompt: str,
         parent_id: Optional[int] = None,
         input_images: Optional[List[str]] = None,
+        model: str = "seedream4",
     ) -> Dict[str, Any]:
         data = {
             "user_id": user_id,
             "prompt": prompt,
             "status": "pending",
-            "model": "seedream4",
+            "model": model,
         }
         if parent_id is not None:
             data["parent_id"] = parent_id
