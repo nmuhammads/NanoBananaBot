@@ -132,11 +132,13 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
                     f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
                 )
         else:  # stars
-            label = f"{tokens} ✨"
+            label = f"{tokens} ✨ ({tokens // 2} 🍌)"
         buttons.append(InlineKeyboardButton(text=label, url=url))
 
-    # Arrange buttons in rows (3 buttons per row => 2 rows for 6 items)
-    chunk_size = 3
+    # Arrange buttons in rows
+    # SBP/Card: 1 per row (long labels)
+    # Stars: 3 per row (short labels)
+    chunk_size = 1 if m in {"sbp", "card"} else 3
     for i in range(0, len(buttons), chunk_size):
         rows.append(buttons[i : i + chunk_size])
 
