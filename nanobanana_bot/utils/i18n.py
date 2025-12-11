@@ -24,6 +24,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.repeat_generation": "Повторить последнюю генерацию 🔁",
         "kb.new_generation": "Новая генерация 🆕",
         "kb.start": "Старт ⏮️",
+        "common.back": "🔙 Назад",
 
         # Start
         "start.welcome": (
@@ -84,9 +85,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "topup.method.sbp": "🏦 Рублями / СБП",
         "topup.method.card": "💳 Картой (Любая страна)",
         "topup.method.old_stars": "⭐ Счёт в Telegram Stars",
-        "topup.packages.title": "Выберите пакет (1 ✨ = 1 токен)",
+        "topup.packages.title": "2 звезды = 1 токен",
         "topup.package.unavailable": "Оплата временно недоступна. Настройте продукты в Tribute.",
-        "topup.link_hint": "Нажмите на кнопку ниже для оплаты.",
+        "topup.link_hint": "",
         "topup.invoice_title": "Пополнение токенов",
         "topup.invoice_desc": "Покупка {amount} токенов (Telegram Stars)",
         "topup.invoice_label": "Пополнение {amount} токенов ✨",
@@ -150,6 +151,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.repeat_generation": "Repeat last generation 🔁",
         "kb.new_generation": "New generation 🆕",
         "kb.start": "Start ⏮️",
+        "common.back": "🔙 Back",
 
         # Start
         "start.welcome": (
@@ -210,9 +212,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "topup.method.sbp": "🏦 Rubles / SBP",
         "topup.method.card": "💳 Bank card (Any country)",
         "topup.method.old_stars": "⭐ Telegram Stars invoice",
-        "topup.packages.title": "Choose a package (1 ✨ = 1 token)",
+        "topup.packages.title": "2 Stars = 1 token",
         "topup.package.unavailable": "Payment temporarily unavailable. Configure products in Tribute.",
-        "topup.link_hint": "Tap a button below to pay.",
+        "topup.link_hint": "",
         "topup.invoice_title": "Top up tokens",
         "topup.invoice_desc": "Purchase {amount} tokens (Telegram Stars)",
         "topup.invoice_label": "Top up {amount} tokens ✨",

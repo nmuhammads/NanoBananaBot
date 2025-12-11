@@ -109,6 +109,7 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
 
     m = _norm(method)
     rows: list[list[InlineKeyboardButton]] = []
+    buttons: list[InlineKeyboardButton] = []
     for tokens in sorted(ALLOWED_AMOUNTS):
         try:
             url = make_hub_link(m, tokens)
@@ -129,11 +130,34 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
                 )
         else:  # stars
             label = f"{tokens} ✨"
-        rows.append([InlineKeyboardButton(text=label, url=url)])
+        buttons.append(InlineKeyboardButton(text=label, url=url))
+
+    # Arrange buttons in rows (3 buttons per row => 2 rows for 6 items)
+    chunk_size = 3
+    for i in range(0, len(buttons), chunk_size):
+        rows.append(buttons[i : i + chunk_size])
 
     if not rows:
         rows = [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]]
+
+    # Add back button
+    rows.append([InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data == "topup_main")
+async def topup_main_menu(callback: CallbackQuery) -> None:
+    assert _db is not None
+    user = await _db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+    balance = await _db.get_token_balance(callback.from_user.id)
+    text = (
+        f"{t(lang, 'topup.title')}\n"
+        f"{t(lang, 'topup.balance', balance=balance)}\n"
+        f"{t(lang, 'topup.method.title')}"
+    )
+    await callback.message.edit_text(text, reply_markup=method_keyboard(lang))
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("topup_method:"))
@@ -148,11 +172,11 @@ async def choose_method(callback: CallbackQuery) -> None:
         pass
     # For all methods (sbp, card, invoice/stars) show deep-link packages
     kb = await _packages_keyboard(lang, method)
-    await callback.message.answer(
+    await callback.message.edit_text(
         f"{t(lang, 'topup.packages.title')}\n{t(lang, 'topup.link_hint')}",
         reply_markup=kb,
     )
-    await callback.answer("OK")
+    await callback.answer()
 
 
 @router.callback_query(F.data == "noop")

@@ -1,5 +1,5 @@
 HUB_BOT_USERNAME = "aiverse_hub_bot"
-ALLOWED_AMOUNTS = {50, 120, 300, 800}
+ALLOWED_AMOUNTS = {20, 50, 120, 200, 300, 800}
 
 
 def _normalize_method(method: str) -> str:
