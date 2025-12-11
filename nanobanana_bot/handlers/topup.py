@@ -137,8 +137,8 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
 
     # Arrange buttons in rows
     # SBP/Card: 1 per row (long labels)
-    # Stars: 3 per row (short labels)
-    chunk_size = 1 if m in {"sbp", "card"} else 3
+    # Stars: 2 per row (short labels)
+    chunk_size = 1 if m in {"sbp", "card"} else 2
     for i in range(0, len(buttons), chunk_size):
         rows.append(buttons[i : i + chunk_size])
 
