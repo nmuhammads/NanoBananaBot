@@ -111,6 +111,9 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     buttons: list[InlineKeyboardButton] = []
     for tokens in sorted(ALLOWED_AMOUNTS):
+        # Filter: 20 and 200 are only for Stars
+        if m != "stars" and tokens in {20, 200}:
+            continue
         try:
             url = make_hub_link(m, tokens)
         except Exception:
