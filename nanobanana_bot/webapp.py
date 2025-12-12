@@ -377,7 +377,15 @@ async def nanobanana_callback(request: Request) -> dict:
                 refund_note = (
                     f"Токены возвращены: +{tokens_required}" if lang == "ru" else f"Tokens refunded: +{tokens_required}"
                 )
-                await bot.send_message(chat_id=int(user_id), text=f"Ошибка генерации: {fail_msg}\n\n{refund_note}", reply_markup=reply_markup)
+                result_msg = f"Ошибка генерации: {fail_msg}"
+                if "nsfw" in str(fail_msg).lower():
+                    result_msg = "🚫 Из-за политик разработчика Нейросети, модель отклонила генерацию. Попробуйте в другой крутой модели: @seedreameditbot (рекомендуем Seedream 4.5 для лучшего качества)"
+                else:
+                    # Sanitize
+                    sanitized = str(fail_msg).replace("KIE API error:", "").replace("KIE API", "").strip()
+                    result_msg = f"Ошибка генерации: {sanitized}"
+
+                await bot.send_message(chat_id=int(user_id), text=f"{result_msg}\n\n{refund_note}", reply_markup=reply_markup)
             except Exception as e:
                 logger.warning("Failed to notify user %s of failure: %s", user_id, e)
         else:

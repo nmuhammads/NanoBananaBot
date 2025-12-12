@@ -699,7 +699,17 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
         if gen_id is not None:
             await _db.mark_generation_failed(gen_id, str(e))
-        await callback.message.edit_text(f"Ошибка генерации: {e}")
+        
+        err_str = str(e)
+        if "nsfw" in err_str.lower():
+            # NSFW Redirection
+            msg = "🚫 Из-за политик разработчика Нейросети, модель отклонила генерацию. Попробуйте в другой крутой модели: @seedreameditbot (рекомендуем Seedream 4.5 для лучшего качества)"
+            await callback.message.edit_text(msg)
+        else:
+            # General error sanitization
+            sanitized = err_str.replace("KIE API error:", "").replace("KIE API", "").strip()
+            await callback.message.edit_text(f"Ошибка генерации: {sanitized}")
+
         _logger.exception("Generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
         await state.clear()
         await callback.answer()

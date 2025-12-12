@@ -117,7 +117,7 @@ class NanoBananaClient:
                     # KIE may return {code,msg,data}; surface errors if code != 200
                     if isinstance(data, dict) and "code" in data and data.get("code") not in (200, 0, None):
                         self._logger.error("KIE API error: code=%s msg=%s", data.get("code"), data.get("msg"))
-                        raise RuntimeError(f"KIE API error: {data.get('msg')}")
+                        raise RuntimeError(f"{data.get('msg')}")
                     # Two possible patterns:
                     # 1) Synchronous: returns image_url
                     # 2) Async: returns taskId and will POST to callBackUrl later
@@ -180,7 +180,7 @@ class NanoBananaClient:
                         raise
                     if isinstance(data, dict) and "code" in data and data.get("code") not in (200, 0, None):
                         self._logger.error("KIE recordInfo error: code=%s msg=%s", data.get("code"), data.get("msg"))
-                        raise RuntimeError(f"KIE recordInfo error: {data.get('msg')}")
+                        raise RuntimeError(f"{data.get('msg')}")
                     return data
         except aiohttp.ClientError as e:
             self._logger.exception("HTTP client error during KIE recordInfo: %s", e)
