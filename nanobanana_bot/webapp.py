@@ -60,11 +60,11 @@ dp.callback_query.middleware(RateLimitMiddleware(1.0))
 # Handlers setup
 start_handler.setup(db)
 generate_handler.setup(
-    client,
-    db,
-    settings.seedream_model_t2i,
-    settings.seedream_model_edit,
-    cache,
+    client=client,
+    database=db,
+    seedream_model_t2i=settings.seedream_model_t2i,
+    seedream_model_edit=settings.seedream_model_edit,
+    cache=cache,
 )
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
