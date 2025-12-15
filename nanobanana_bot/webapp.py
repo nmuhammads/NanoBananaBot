@@ -379,9 +379,13 @@ async def seedream_callback(request: Request) -> dict:
                 # Сохраним мета‑параметры последней успешной генерации (если найдены по попытке)
                 try:
                     if user_id is not None and generation_id is not None:
+                        logger.info("Attempting to restore success meta for user=%s gen_id=%s", user_id, generation_id)
                         meta = await cache.get_attempt_meta(int(user_id), int(generation_id))
                         if meta:
+                            logger.info("Restored success meta for user=%s gen_id=%s: %s", user_id, generation_id, meta.keys())
                             await cache.set_last_success_meta(int(user_id), meta)
+                        else:
+                            logger.warning("Attempt meta not found for user=%s gen_id=%s", user_id, generation_id)
                 except Exception as e:
                     logger.warning("Failed to persist last success meta for user=%s gen_id=%s: %s", user_id, generation_id, e)
                 await bot.send_document(
