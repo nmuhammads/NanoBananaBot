@@ -271,8 +271,18 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     st0 = await state.get_data()
     lang0 = st0.get("lang")
-    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
-        await start_generate_text(message, state)
+    if text in {
+        t("ru", "kb.generate"), t("en", "kb.generate"),
+        t("ru", "kb.new_generation"), t("en", "kb.new_generation"),
+        t("ru", "kb.seedream_4"), t("en", "kb.seedream_4"),
+        t("ru", "kb.seedream_4_5"), t("en", "kb.seedream_4_5")
+    }:
+        if text in {t("ru", "kb.seedream_4"), t("en", "kb.seedream_4")}:
+            await start_generate_v4(message, state)
+        elif text in {t("ru", "kb.seedream_4_5"), t("en", "kb.seedream_4_5")}:
+             await start_generate_v4_5(message, state)
+        else:
+             await start_generate_text_any(message, state)
         return
     
     # Filter commands and other menu buttons
@@ -612,8 +622,18 @@ async def require_photo(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     st = await state.get_data()
     lang = st.get("lang")
-    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation")}:
-        await start_generate_text(message, state)
+    if text in {
+        t("ru", "kb.generate"), t("en", "kb.generate"),
+        t("ru", "kb.new_generation"), t("en", "kb.new_generation"),
+        t("ru", "kb.seedream_4"), t("en", "kb.seedream_4"),
+        t("ru", "kb.seedream_4_5"), t("en", "kb.seedream_4_5")
+    }:
+        if text in {t("ru", "kb.seedream_4"), t("en", "kb.seedream_4")}:
+            await start_generate_v4(message, state)
+        elif text in {t("ru", "kb.seedream_4_5"), t("en", "kb.seedream_4_5")}:
+             await start_generate_v4_5(message, state)
+        else:
+             await start_generate_text_any(message, state)
         return
 
     # Если пользователь открыл главное меню или ввёл /start — не мешаем обработчику старт
@@ -643,9 +663,25 @@ async def require_photo(message: Message, state: FSMContext) -> None:
     await message.answer(t(lang, "gen.require_photo", next=next_idx, total=photos_needed))
 
 
-# Текстовый запуск генерации с нижней клавиатуры
-@router.message((F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
-async def start_generate_text(message: Message, state: FSMContext) -> None:
+# Текстовый запуск генерации: Seedream 4 (4.0)
+@router.message((F.text == t("ru", "kb.seedream_4")) | (F.text == t("en", "kb.seedream_4")))
+async def start_generate_v4(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state, model_version="v4")
+
+# Текстовый запуск генерации: Seedream 4.5
+@router.message((F.text == t("ru", "kb.seedream_4_5")) | (F.text == t("en", "kb.seedream_4_5")))
+async def start_generate_v4_5(message: Message, state: FSMContext) -> None:
+    await start_generate(message, state, model_version="v4.5")
+
+# Запуск генерации по кнопке «Новая генерация» или старой кнопке (для совместимости) /start_generate/
+@router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")) | (F.text == t("ru", "kb.generate")) | (F.text == t("en", "kb.generate")))
+async def start_generate_text_any(message: Message, state: FSMContext) -> None:
+    # Если нажали "Новая генерация" или старую кнопку, предложим выбрать модель (или по умолчанию v4)
+    # Но лучше просто показать клавиатуру с выбором модели?
+    # Или запустить v4 по умолчанию?
+    # Давайте покажем инлайн клавиатуру выбора модели, как это было раньше в start_generate_text
+    # Но start_generate теперь принимает model_version.
+    # Чтобы вернуть выбор модели, нужно вернуть старую логику start_generate_text.
     await state.clear()
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
@@ -655,11 +691,6 @@ async def start_generate_text(message: Message, state: FSMContext) -> None:
         t(lang, "gen.choose_model"),
         reply_markup=model_keyboard(lang),
     )
-
-# Запуск генерации по кнопке «Новая генерация»
-@router.message((F.text == t("ru", "kb.new_generation")) | (F.text == t("en", "kb.new_generation")))
-async def start_generate_text_new(message: Message, state: FSMContext) -> None:
-    await start_generate(message, state)
 
 
 @router.callback_query(StateFilter(GenerateStates.choosing_model))
@@ -1206,6 +1237,28 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         model = _seedream_model_edit_4_5 if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i_4_5
     else:
         model = _seedream_model_edit if (len(photos) > 0 or avatar_file_path or (isinstance(selected_avatars, list) and len(selected_avatars) > 0)) else _seedream_model_t2i
+
+    # Сохраним параметры попытки генерации в кэше для возможного повторения (как в основной ветке)
+    # Это критично для асинхронных моделей (v4.5), чтобы в callback можно было обновить last_success_meta
+    try:
+        if _cache is not None and gen_id is not None:
+             attempt_meta = {
+                "prompt": prompt,
+                "gen_type": gen_type,
+                "ratio": ratio,
+                "image_resolution": image_resolution,
+                "quality": quality,
+                "max_images": max_images,
+                "photos": photos,
+                "avatar_file_path": avatar_file_path,
+                "selected_avatars": selected_avatars,
+                "image_size": image_size,
+                "model": model,
+                "model_version": model_version,
+            }
+             await _cache.set_attempt_meta(user_id, int(gen_id), attempt_meta)
+    except Exception as e:
+        _logger.warning("Failed to cache attempt meta (repeat) user=%s gen_id=%s: %s", user_id, gen_id, e)
 
     try:
         image_url = await _client.generate_image(

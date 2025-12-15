@@ -23,6 +23,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.avatars": "Мои аватары 📸",
         "kb.new_generation": "Новая генерация 🖼️",
         "kb.repeat_generation": "Повторить генерацию 🔁",
+        "kb.seedream_4": "Seedream 4.0",
         "kb.seedream_4_5": "Seedream 4.5 🔥",
 
         # Model selection
@@ -210,6 +211,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.avatars": "My Avatars 📸",
         "kb.new_generation": "New generation 🖼️",
         "kb.repeat_generation": "Repeat generation 🔁",
+        "kb.seedream_4": "Seedream 4.0",
         "kb.seedream_4_5": "Seedream 4.5 🔥",
 
         # Model selection
