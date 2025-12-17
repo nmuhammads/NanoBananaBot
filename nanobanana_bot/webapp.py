@@ -264,15 +264,30 @@ async def seedream_callback(request: Request) -> dict:
             # If we have user_id, refund tokens and notify the user
             if user_id is not None:
                 try:
-                    # Fetch language and current balance in one go when possible
+                    # Fetch language, current balance, and model info to determine price
                     res = db.client.table("users").select("language_code,balance").eq("user_id", int(user_id)).limit(1).execute()
                     rows = getattr(res, "data", []) or []
                     lang = normalize_lang(rows[0].get("language_code") if rows else None)
                     current_balance = rows[0].get("balance") if rows else None
                     if current_balance is None:
                         current_balance = await db.get_token_balance(int(user_id))
-                    new_balance = int(current_balance or 0) + 3
+                    
+                    # Determine price from generation record if possible
+                    refund_amount = 4 # default for v4
+                    if generation_id is not None:
+                         try:
+                             gen_res = db.client.table("generations").select("model").eq("id", int(generation_id)).limit(1).execute()
+                             gen_rows = getattr(gen_res, "data", []) or []
+                             if gen_rows:
+                                 model_used = gen_rows[0].get("model")
+                                 if model_used == "seedream4-5":
+                                     refund_amount = 7
+                         except Exception as e:
+                             logger.warning("Failed to fetch generation model for refund calculation id=%s: %s", generation_id, e)
+
+                    new_balance = int(current_balance or 0) + refund_amount
                     await db.set_token_balance(int(user_id), new_balance)
+                    logger.info("Refunded %s tokens to user %s (failure). Balance %s -> %s", refund_amount, user_id, current_balance, new_balance)
 
                     # Choose localized message based on failure reason
                     fm_lower = (fail_msg or "").lower()

@@ -20,3 +20,4 @@ tmp/
 .agent/rules/answerlanguage.md
 Docs/*
 deploy logs.txt
+deploy logs.log
