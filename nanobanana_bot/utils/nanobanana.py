@@ -108,6 +108,15 @@ class NanoBananaClient:
                     status = resp.status
                     text = await resp.text()
                     self._logger.debug("NanoBanana response status=%s body=%s", status, text[:500])
+                    
+                    # Обработка ошибки 422 - контент помечен как чувствительный (E005)
+                    if status == 422:
+                        self._logger.warning("NanoBanana API 422 error (sensitive content): %s", text[:500])
+                        # Проверяем на ошибку контент-модерации
+                        if "sensitive" in text.lower() or "E005" in text:
+                            raise RuntimeError("SENSITIVE_CONTENT_ERROR")
+                        raise RuntimeError(f"Validation error: {text[:200]}")
+                    
                     resp.raise_for_status()
                     try:
                         data = await resp.json()
