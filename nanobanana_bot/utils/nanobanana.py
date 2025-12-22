@@ -79,24 +79,32 @@ class NanoBananaClient:
         
         # Специальная обработка для nano-banana-pro
         if payload.get("model") == "nano-banana-pro":
-            # Для Pro модели используем только image_input (без image_urls)
-            if image_urls:
-                # image_input должен быть строкой с URL, разделёнными запятыми
-                input_obj["image_input"] = ",".join(cleaned_urls)
-                # Удаляем image_urls - для Pro модели он не нужен
-                input_obj.pop("image_urls", None)
+            # Для Pro модели: минимальный набор параметров согласно документации API
+            # Удаляем все лишние поля
+            input_obj.pop("image_urls", None)
+            input_obj.pop("image_size", None)
+            input_obj.pop("output_format", None)
             
+            # image_input — массив URL референсных изображений
+            if image_urls:
+                input_obj["image_input"] = cleaned_urls
+            
+            # aspect_ratio вместо image_size
             if image_size:
                 input_obj["aspect_ratio"] = image_size
-            # Удаляем image_size - для Pro модели используется aspect_ratio
-            input_obj.pop("image_size", None)
             
+            # resolution обязателен
             if resolution:
                 input_obj["resolution"] = resolution
             elif "resolution" not in input_obj:
                 input_obj["resolution"] = "2K"
         
         payload["input"] = input_obj
+        
+        # Логирование полного payload для отладки Pro модели
+        if payload.get("model") == "nano-banana-pro":
+            import json
+            self._logger.info("NanoBanana Pro payload: %s", json.dumps(payload, ensure_ascii=False, default=str))
         if meta:
             payload["meta"] = meta
 
