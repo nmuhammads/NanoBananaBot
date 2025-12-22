@@ -76,15 +76,26 @@ class NanoBananaClient:
                 su = str(u).strip().strip("`").strip('"').strip("'")
                 cleaned_urls.append(su)
             input_obj["image_urls"] = cleaned_urls
-        if (payload.get("model") == "nano-banana-pro"):
+        
+        # Специальная обработка для nano-banana-pro
+        if payload.get("model") == "nano-banana-pro":
+            # Для Pro модели используем только image_input (без image_urls)
+            if image_urls:
+                # image_input должен быть строкой с URL, разделёнными запятыми
+                input_obj["image_input"] = ",".join(cleaned_urls)
+                # Удаляем image_urls - для Pro модели он не нужен
+                input_obj.pop("image_urls", None)
+            
             if image_size:
                 input_obj["aspect_ratio"] = image_size
-            if image_urls:
-                input_obj["image_input"] = list(input_obj.get("image_urls", []))
+            # Удаляем image_size - для Pro модели используется aspect_ratio
+            input_obj.pop("image_size", None)
+            
             if resolution:
                 input_obj["resolution"] = resolution
             elif "resolution" not in input_obj:
                 input_obj["resolution"] = "2K"
+        
         payload["input"] = input_obj
         if meta:
             payload["meta"] = meta

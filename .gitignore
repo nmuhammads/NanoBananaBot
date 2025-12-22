@@ -20,3 +20,4 @@ tmp/
 Docs/*
 .agent/*
 deploy logs.txt
+deploy logs.log
