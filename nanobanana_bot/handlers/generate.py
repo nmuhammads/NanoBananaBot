@@ -12,6 +12,7 @@ from aiogram.types import (
 )
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 
 from ..utils.nanobanana import NanoBananaClient
 from ..database import Database
@@ -47,6 +48,18 @@ class GenerateStates(StatesGroup):
     choosing_resolution = State()
     confirming = State()
     repeating_confirm = State()
+
+
+def truncate_prompt(prompt: str, max_length: int = 500) -> str:
+    """Truncate prompt for display in summary to avoid MESSAGE_TOO_LONG error."""
+    if len(prompt) <= max_length:
+        return prompt
+    return prompt[:max_length] + "..."
+
+
+# Maximum prompt length to avoid MESSAGE_TOO_LONG error in Telegram
+# API supports up to 10000, but Telegram message limit is ~4096
+MAX_PROMPT_LENGTH = 4000
 
 
 
@@ -301,6 +314,21 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         await message.answer(t(lang, "gen.prompt_empty"))
         _logger.warning("User %s sent empty prompt", message.from_user.id)
         return
+    
+    # Check prompt length to avoid MESSAGE_TOO_LONG error
+    if len(prompt) > MAX_PROMPT_LENGTH:
+        st = await state.get_data()
+        lang = st.get("lang")
+        await message.answer(
+            f"⚠️ Ваш промпт слишком длинный ({len(prompt)} символов).\n\n"
+            f"Максимальная длина в боте: {MAX_PROMPT_LENGTH} символов.\n\n"
+            f"Пожалуйста, сократите текст и отправьте заново.\n\n"
+            f"💡 Для генерации с длинными промптами (до 10 000 символов) "
+            f"воспользуйтесь нашим приложением: @AiVerseAppBot"
+        )
+        _logger.warning("User %s sent too long prompt: %s chars (max %s)", message.from_user.id, len(prompt), MAX_PROMPT_LENGTH)
+        return
+    
     _logger.info("User %s provided prompt len=%s", message.from_user.id, len(prompt))
     await state.update_data(prompt=prompt)
 
@@ -342,10 +370,11 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         }
         gen_type_label = type_map.get(gen_type, str(gen_type))
 
+        display_prompt = truncate_prompt(str(prompt or ''))
         summary = (
             f"{t(lang, 'gen.summary.title')}\n\n"
             f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-            f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
+            f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
             f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
         )
         summary += f"• Фото: {len(photos)} из {photos_needed}"
@@ -502,17 +531,33 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     }
     gen_type_label = type_map.get(gen_type, str(gen_type))
 
+    display_prompt = truncate_prompt(str(prompt or ''))
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
     if gen_type in {"text_photo", "text_multi"}:
         summary += f"• Фото: {len(photos)} из {photos_needed}"
 
     await state.set_state(GenerateStates.confirming)
-    await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
+    try:
+        await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
+    except TelegramBadRequest as e:
+        if "MESSAGE_TOO_LONG" in str(e):
+            _logger.warning("Summary too long for user %s, sending shortened version", callback.from_user.id)
+            short_summary = (
+                f"{t(lang, 'gen.summary.title')}\n\n"
+                f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+                f"• Промпт: (слишком длинный для отображения)\n"
+                f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
+            )
+            if gen_type in {"text_photo", "text_multi"}:
+                short_summary += f"• Фото: {len(photos)} из {photos_needed}"
+            await callback.message.edit_text(short_summary, reply_markup=confirm_keyboard(lang))
+        else:
+            raise
     await callback.answer()
 
 
@@ -543,16 +588,31 @@ async def choose_resolution(callback: CallbackQuery, state: FSMContext) -> None:
     price = 10 if resolution == "2K" else 15
     await state.update_data(tokens_required=price)
 
+    display_prompt = truncate_prompt(str(prompt or ''))
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
         f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
     )
 
     await state.set_state(GenerateStates.confirming)
-    await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
+    try:
+        await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
+    except TelegramBadRequest as e:
+        if "MESSAGE_TOO_LONG" in str(e):
+            _logger.warning("Summary too long for user %s, sending shortened version", callback.from_user.id)
+            short_summary = (
+                f"{t(lang, 'gen.summary.title')}\n\n"
+                f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+                f"• Промпт: (слишком длинный для отображения)\n"
+                f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
+                f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
+            )
+            await callback.message.edit_text(short_summary, reply_markup=confirm_keyboard(lang))
+        else:
+            raise
     await callback.answer()
 
 
@@ -832,10 +892,11 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     }
     gen_type_label = type_map.get(gen_type, str(gen_type))
     ratio_label = t(lang, "gen.ratio.auto") if ratio_val == "auto" else ratio_val
+    display_prompt = truncate_prompt(str(prompt or ''))
     summary = (
         f"{t(lang, 'gen.summary.title')}\n\n"
         f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(str(prompt or ''))))}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
     )
     if gen_type in {"text_photo", "text_multi", "edit_photo"}:
