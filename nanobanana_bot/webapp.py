@@ -37,19 +37,20 @@ logger = logging.getLogger("nanobanana.app")
 # Initialize settings and core bot components
 settings = load_settings()
 
-# Configure custom session to force IPv4 and fix connection timeouts
+# Configure custom aiohttp connector to force IPv4 and fix connection timeouts
 import socket
-from aiohttp import TCPConnector
-from aiogram.client.session.aiohttp import AiohttpSession
+from aiohttp import ClientSession, TCPConnector
 
-session = AiohttpSession(
-    connector=TCPConnector(
+def _create_bot_session():
+    """Create aiohttp ClientSession with IPv4-only connector."""
+    connector = TCPConnector(
         family=socket.AF_INET,
         ssl=True,
-    ),
-)
+    )
+    return ClientSession(connector=connector)
 
-bot = Bot(token=settings.bot_token, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+# Note: We'll set the session in on_startup to ensure proper async context
+bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
 # Shared services
@@ -128,6 +129,13 @@ async def _setup_webhook_with_retries(
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    # Configure bot session with IPv4-only connector to fix timeout issues
+    from aiogram.client.session.aiohttp import AiohttpSession
+    custom_session = AiohttpSession()
+    # Replace the internal aiohttp session with one using IPv4-only connector
+    custom_session._session = _create_bot_session()
+    bot._session = custom_session
+    
     # Ensure webhook URL is provided for webhook mode
     if not settings.webhook_url:
         raise RuntimeError("WEBHOOK_URL is required for webhook mode (Railway)")
