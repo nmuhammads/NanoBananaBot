@@ -37,7 +37,19 @@ logger = logging.getLogger("nanobanana.app")
 # Initialize settings and core bot components
 settings = load_settings()
 
-bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+# Configure custom session to force IPv4 and fix connection timeouts
+import socket
+from aiohttp import TCPConnector
+from aiogram.client.session.aiohttp import AiohttpSession
+
+session = AiohttpSession(
+    connector=TCPConnector(
+        family=socket.AF_INET,
+        ssl=True,
+    ),
+)
+
+bot = Bot(token=settings.bot_token, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
 # Shared services
