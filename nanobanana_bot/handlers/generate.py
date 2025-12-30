@@ -15,6 +15,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import PurePosixPath
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramNetworkError
 
 from ..utils.seedream import SeedreamClient
 from ..database import Database
@@ -412,7 +413,11 @@ async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> N
         await state.update_data(photos_needed=count, photos=[])
         await state.set_state(GenerateStates.waiting_photos)
         lang = st.get("lang")
-        await callback.message.edit_text(t(lang, "gen.confirmed_count", count=count))
+        try:
+            await callback.message.edit_text(t(lang, "gen.confirmed_count", count=count))
+        except TelegramNetworkError:
+            _logger.warning("Failed to edit message in photo_count_callbacks (network error), sending new message instead.")
+            await callback.message.answer(t(lang, "gen.confirmed_count", count=count))
         await callback.answer("Готово")
         _logger.info("User %s confirmed photo_count=%s", callback.from_user.id, count)
         return
