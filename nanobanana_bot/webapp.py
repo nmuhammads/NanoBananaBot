@@ -124,6 +124,43 @@ async def on_startup() -> None:
     path = settings.webhook_path
     url = f"{base_url}{path}"
 
+    # Check current webhook first - only update if needed
+    try:
+        webhook_info = await asyncio.wait_for(
+            bot.get_webhook_info(),
+            timeout=settings.request_timeout_seconds,
+        )
+        current_url = webhook_info.url or ""
+        if current_url == url:
+            logger.info("Webhook already set correctly: %s, skipping setup", url)
+            # Still register bot commands
+            try:
+                await bot.set_my_commands([
+                    BotCommand(command="start", description="Приветствие"),
+                    BotCommand(command="profile", description="Профиль и баланс"),
+                    BotCommand(command="generate", description="Генерация изображения"),
+                    BotCommand(command="topup", description="Пополнить баланс токенов"),
+                    BotCommand(command="prices", description="Цены на токены"),
+                    BotCommand(command="lang", description="Выбрать язык"),
+                    BotCommand(command="help", description="Список команд"),
+                ])
+                logger.info("Bot commands registered")
+            except Exception as e:
+                logger.warning("Failed to set bot commands: %s", e)
+            # Log Tribute products config
+            try:
+                if settings.tribute_product_map:
+                    logger.info("Tribute products configured: %s", settings.tribute_product_map)
+                else:
+                    logger.info("Tribute products configured: none")
+            except Exception:
+                logger.debug("Failed to log Tribute products config", exc_info=True)
+            return  # Webhook already configured, skip re-setting
+        else:
+            logger.info("Webhook URL differs (current=%s, target=%s), updating...", current_url, url)
+    except Exception as e:
+        logger.warning("Failed to check current webhook: %s, proceeding with setup", e)
+
     # Reset previous webhook to avoid conflicts and drop pending updates
     try:
         await asyncio.wait_for(
