@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, Header, HTTPException
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Update, BotCommand, BufferedInputFile, URLInputFile, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Update, BotCommand, BufferedInputFile, URLInputFile, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
@@ -414,17 +414,28 @@ async def nanobanana_callback(request: Request) -> dict:
                 refund_note = (
                     f"Токены возвращены: +{tokens_required}" if lang == "ru" else f"Tokens refunded: +{tokens_required}"
                 )
-                result_msg = f"Ошибка генерации: {fail_msg}"
+                
+                is_moderation_error = False
+                seedream_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔥 Попробовать Seedream 4.5", url="https://t.me/seedreameditbot")]
+                ])
+
                 if "nsfw" in str(fail_msg).lower():
-                    result_msg = "🚫 Из-за политик разработчика Нейросети, модель отклонила генерацию. Попробуйте в другой крутой модели: @seedreameditbot (рекомендуем Seedream 4.5 для лучшего качества)"
+                    result_msg = "🚫 Из-за политик разработчика Нейросети, модель отклонила генерацию. Попробуйте в другой крутой модели — Seedream 4.5 (рекомендуем для лучшего качества)"
+                    is_moderation_error = True
                 elif "sensitive" in str(fail_msg).lower() or "E005" in str(fail_msg):
-                    result_msg = "🚫 Система модерации отклонила запрос. Ваш текст или изображение содержит чувствительный контент. Попробуйте в другой крутой модели: @seedreameditbot (рекомендуем Seedream 4.5 для лучшего качества)"
+                    result_msg = "🚫 Система модерации отклонила запрос. Ваш текст или изображение содержит чувствительный контент. Попробуйте в другой крутой модели — Seedream 4.5 (рекомендуем для лучшего качества)"
+                    is_moderation_error = True
                 else:
                     # Sanitize
                     sanitized = str(fail_msg).replace("KIE API error:", "").replace("KIE API", "").strip()
                     result_msg = f"Ошибка генерации: {sanitized}"
 
-                await bot.send_message(chat_id=int(user_id), text=f"{result_msg}\n\n{refund_note}", reply_markup=reply_markup)
+                await bot.send_message(
+                    chat_id=int(user_id), 
+                    text=f"{result_msg}\n\n{refund_note}", 
+                    reply_markup=seedream_kb if is_moderation_error else reply_markup
+                )
             except Exception as e:
                 logger.warning("Failed to notify user %s of failure: %s", user_id, e)
         else:

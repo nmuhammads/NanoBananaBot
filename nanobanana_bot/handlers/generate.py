@@ -763,10 +763,14 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         err_str = str(e)
         
         # Ошибка контент-модерации (sensitive content / E005)
+        seedream_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔥 Попробовать Seedream 4.5", url="https://t.me/seedreameditbot")]
+        ])
+
         if "SENSITIVE_CONTENT_ERROR" in err_str or "sensitive" in err_str.lower():
             # Sensitive content - аналогично nsfw
-            msg = "🚫 Система модерации отклонила запрос. Ваш текст или изображение содержит чувствительный контент. Попробуйте в другой крутой модели: @seedreameditbot (рекомендуем Seedream 4.5 для лучшего качества)"
-            await callback.message.edit_text(msg)
+            msg = "🚫 Система модерации отклонила запрос. Ваш текст или изображение содержит чувствительный контент. Попробуйте в другой крутой модели — Seedream 4.5 (рекомендуем для лучшего качества)"
+            await callback.message.edit_text(msg, reply_markup=seedream_kb)
             _logger.warning("Generation rejected by content moderation: user=%s gen_id=%s", user_id, gen_id)
             await state.clear()
             await callback.answer()
@@ -774,8 +778,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         
         if "nsfw" in err_str.lower():
             # NSFW Redirection
-            msg = "🚫 Из-за политик разработчика Нейросети, модель отклонила генерацию. Попробуйте в другой крутой модели: @seedreameditbot (рекомендуем Seedream 4.5 для лучшего качества)"
-            await callback.message.edit_text(msg)
+            msg = "🚫 Из-за политик разработчика Нейросети, модель отклонила генерацию. Попробуйте в другой крутой модели — Seedream 4.5 (рекомендуем для лучшего качества)"
+            await callback.message.edit_text(msg, reply_markup=seedream_kb)
         else:
             # General error sanitization
             sanitized = err_str.replace("KIE API error:", "").replace("KIE API", "").strip()
