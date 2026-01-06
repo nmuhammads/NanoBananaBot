@@ -30,7 +30,8 @@ def load_settings() -> Settings:
 
     bot_token = os.getenv("BOT_TOKEN", "")
     supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_KEY", "")
+    # Use service role key to bypass RLS, fallback to anon key
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     nanobanana_api_base = os.getenv("NANOBANANA_API_BASE", "https://kie.ai/nano-banana")
     nanobanana_api_key = os.getenv("NANOBANANA_API_KEY")
