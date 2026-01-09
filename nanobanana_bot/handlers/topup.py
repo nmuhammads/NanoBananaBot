@@ -42,6 +42,7 @@ def method_keyboard(lang: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=t(lang, "topup.method.sbp"), callback_data="topup_method:sbp")],
             [InlineKeyboardButton(text=t(lang, "topup.method.card"), callback_data="topup_method:card")],
             [InlineKeyboardButton(text=t(lang, "topup.method.old_stars"), callback_data="topup_method:invoice")],
+            [InlineKeyboardButton(text=t(lang, "topup.method.bonus"), url="https://t.me/aiversebots?direct")],
         ]
     )
 
@@ -56,6 +57,7 @@ async def topup(message: Message) -> None:
         (
             f"{t(lang, 'topup.title')}\n"
             f"{t(lang, 'topup.balance', balance=balance)}\n"
+            f"{t(lang, 'topup.bonus_info')}\n\n"
             f"{t(lang, 'topup.method.title')}"
         ),
         reply_markup=method_keyboard(lang),
