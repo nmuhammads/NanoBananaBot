@@ -41,9 +41,8 @@ async def profile(message: Message) -> None:
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "kb.topup"))],
             [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
-            [KeyboardButton(text=t(lang, "avatars.btn_label"))],
+            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
         ],
         resize_keyboard=True,
     )

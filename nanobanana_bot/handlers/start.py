@@ -76,11 +76,8 @@ async def start(message: Message) -> None:
 
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(text=t(lang, "kb.profile")),
-                KeyboardButton(text=t(lang, "kb.topup")),
-            ],
             [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
         ],
         resize_keyboard=True,
     )
@@ -131,11 +128,8 @@ async def set_lang(callback: CallbackQuery) -> None:
     balance = await _db.get_token_balance(callback.from_user.id)
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(text=t(lang, "kb.profile")),
-                KeyboardButton(text=t(lang, "kb.topup")),
-            ],
             [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
         ],
         resize_keyboard=True,
     )
