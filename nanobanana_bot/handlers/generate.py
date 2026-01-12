@@ -24,6 +24,8 @@ import logging
 import httpx
 
 
+from .start import get_main_keyboard
+
 router = Router(name="generate")
 
 _client: NanoBananaClient | None = None
@@ -274,6 +276,11 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
     await state.update_data(user_id=message.from_user.id, lang=lang)
+    
+    # 1. Сброс клавиатуры (убираем кнопку "Повторить")
+    await message.answer(t(lang, "kb.generate"), reply_markup=get_main_keyboard(lang))
+    
+    # 2. Меню выбора типа (Inline)
     await message.answer(
         t(lang, "gen.choose_method"),
         reply_markup=type_keyboard(lang),
@@ -1072,21 +1079,7 @@ async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str
         _logger.error("Error in async R2 upload task for gen %s: %s", generation_id, e)
 
 
-from .start import get_main_keyboard
 
-@router.message(Command("generate"))
-async def start_generate(message: Message, state: FSMContext) -> None:
-    assert _client is not None and _db is not None
-    user_id = message.from_user.id
-    user = await _db.get_user(user_id) or {}
-    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-
-    await state.clear()
-    await state.update_data(user_id=user_id, lang=lang)
-    await state.set_state(GenerateStates.waiting_prompt)
-    
-    # Send main keyboard (hides Repeat) along with prompt request
-    await message.answer(t(lang, "gen.enter_prompt"), reply_markup=get_main_keyboard(lang))
 
 # Повтор последнего запроса генерации (любой тип, включая фото) из кеша
 @router.message((F.text == t("ru", "kb.repeat_generation")) | (F.text == t("en", "kb.repeat_generation")))
