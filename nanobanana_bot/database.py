@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timezone
+from uuid import uuid4
+import mimetypes
 
 from supabase import Client, create_client
 
@@ -151,3 +153,92 @@ class Database:
         )
         rows = getattr(res, "data", []) or []
         return rows[0] if rows else None
+
+    async def upload_avatar(
+        self, user_id: int, file_bytes: bytes, display_name: str, content_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        # Determine extension from content type; default to .jpg
+        ext = ".jpg"
+        if content_type:
+            guessed = mimetypes.guess_extension(content_type.split(";")[0].strip())
+            if isinstance(guessed, str) and guessed:
+                ext = guessed
+        # Path: {user_id}/{uuid}.ext
+        path = f"{int(user_id)}/{uuid4().hex}{ext}"
+        bucket = self.client.storage.from_("photo_reference")
+        # Upload (private bucket). If file exists, let it fail
+        bucket.upload(path, file_bytes, {"contentType": content_type or "image/jpeg"})
+        # Record in avatars table
+        created = (
+            self.client.table("avatars")
+            .insert(
+                {
+                    "user_id": int(user_id),
+                    "file_path": path,
+                    "display_name": display_name.strip(),
+                }
+            )
+            .execute()
+        )
+        return created.data[0]
+
+    async def list_avatars(self, user_id: int) -> List[Dict[str, Any]]:
+        res = (
+            self.client.table("avatars")
+            .select("*")
+            .eq("user_id", int(user_id))
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return getattr(res, "data", []) or []
+
+    async def delete_avatar(self, avatar_id: str, user_id: int) -> bool:
+        # First get the avatar to find file path
+        res = (
+            self.client.table("avatars")
+            .select("*")
+            .eq("id", avatar_id)
+            .eq("user_id", int(user_id))
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", []) or []
+        if not rows:
+            return False
+        
+        row = rows[0]
+        file_path = row.get("file_path")
+        
+        # Delete from DB
+        self.client.table("avatars").delete().eq("id", avatar_id).execute()
+        
+        # Delete from storage
+        if file_path:
+            try:
+                self.client.storage.from_("photo_reference").remove([file_path])
+            except Exception:
+                # Log or ignore if already gone
+                pass
+        return True
+
+    async def get_avatar(self, avatar_id: str) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("avatars")
+            .select("*")
+            .eq("id", avatar_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", []) or []
+        return rows[0] if rows else None
+
+    async def create_signed_url(self, file_path: str, expires_in: int = 300) -> str:
+        # Create a temporary signed URL for private bucket access
+        try:
+            signed = self.client.storage.from_("photo_reference").create_signed_url(file_path, expires_in)
+            # Supabase Python client returns dict with signedURL or fullURL depending on version
+            if isinstance(signed, dict):
+                return signed.get("signedURL") or signed.get("signed_url") or signed.get("fullURL") or signed.get("publicURL") or ""
+            return str(signed)
+        except Exception:
+            return ""

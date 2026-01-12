@@ -19,6 +19,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Keyboard labels
         "kb.profile": "Профиль 👤",
         "kb.topup": "Пополнить баланс ✨",
+        "kb.avatars": "Мои аватары 👤",
         "kb.generate": "Базовая генерация 🖼️",
         "kb.nanobanana_pro": "Nanobanana Pro 🔥",
         "kb.repeat_generation": "Повторить последнюю генерацию 🔁",
@@ -61,6 +62,21 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Соотношение сторон выбирается на шаге перед подтверждением\n\n"
             "Стоимость: базовая — 3 токена/изобр., Pro — 15 токенов (4K по умолчанию). Пополнение: /topup"
         ),
+
+        # Avatars
+        "avatars.title": "👤 <b>Мои аватары</b>",
+        "avatars.add": "➕ Добавить аватар",
+        "avatars.empty": "У вас пока нет сохранённых аватаров. Добавьте первый, чтобы использовать его в генерациях!",
+        "avatars.delete_hint": "Нажмите на кнопку с именем аватара, чтобы удалить его.",
+        "avatars.upload_photo": "📸 Отправьте фото для аватара.",
+        "avatars.enter_name": "✍️ Введите название для этого аватара (до 30 символов).",
+        "avatars.saved": "✅ Аватар <b>{name}</b> сохранён!",
+        "avatars.deleted": "🗑️ Аватар удалён.",
+        "avatars.choose_source": "Вы хотите использовать сохранённый аватар или загрузить новое фото?",
+        "avatars.source_photo": "📷 Загрузить фото",
+        "avatars.source_avatar": "👤 Выбрать аватар",
+        "avatars.pick_hint": "Выберите аватар из списка:",
+        "avatars.btn_label": "Мои аватары 👤",
 
         # Profile
         "profile.title": "👤 <b>Профиль</b>",
@@ -148,6 +164,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Keyboard labels
         "kb.profile": "Profile 👤",
         "kb.topup": "Top up ✨",
+        "kb.avatars": "My Avatars 👤",
         "kb.generate": "Basic generation 🖼️",
         "kb.nanobanana_pro": "Nanobanana Pro 🔥",
         "kb.repeat_generation": "Repeat last generation 🔁",
@@ -190,6 +207,21 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Aspect ratio is chosen right before confirmation\n\n"
             "Cost: basic — 3 tokens/img, Pro — 15 tokens (4K default). Top up: /topup"
         ),
+
+        # Avatars
+        "avatars.title": "👤 <b>My Avatars</b>",
+        "avatars.add": "➕ Add Avatar",
+        "avatars.empty": "You don't have saved avatars yet. Add one to use in generations!",
+        "avatars.delete_hint": "Press the button with avatar name to delete it.",
+        "avatars.upload_photo": "📸 Send a photo for the avatar.",
+        "avatars.enter_name": "✍️ Enter a name for this avatar (max 30 chars).",
+        "avatars.saved": "✅ Avatar <b>{name}</b> saved!",
+        "avatars.deleted": "🗑️ Avatar deleted.",
+        "avatars.choose_source": "Do you want to use a saved avatar or upload a new photo?",
+        "avatars.source_photo": "📷 Upload Photo",
+        "avatars.source_avatar": "👤 Choose Avatar",
+        "avatars.pick_hint": "Choose an avatar from the list:",
+        "avatars.btn_label": "My Avatars 👤",
 
         # Profile
         "profile.title": "👤 <b>Profile</b>",

@@ -41,6 +41,7 @@ def setup(client: NanoBananaClient, database: Database, cache: Cache | None = No
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
+    choosing_avatar = State()
     waiting_prompt = State()
     waiting_photo_count = State()
     waiting_photos = State()
@@ -201,6 +202,26 @@ def photo_count_keyboard(selected: int | None = None, lang: str | None = None) -
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def avatar_source_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "avatars.source_photo"), callback_data="source:photo")],
+            [InlineKeyboardButton(text=t(lang, "avatars.source_avatar"), callback_data="source:avatar")],
+        ]
+    )
+
+
+def avatar_pick_keyboard(avatars: list[dict], lang: str | None = None) -> InlineKeyboardMarkup:
+    kb = []
+    for a in avatars:
+        name = a.get("display_name") or "Avatar"
+        aid = a.get("id")
+        kb.append([InlineKeyboardButton(text=f"👤 {name}", callback_data=f"avatar:pick:{aid}")])
+    kb.append([InlineKeyboardButton(text=t(lang, "avatars.source_photo"), callback_data="source:photo")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+
 @router.message(Command("generate"))
 async def start_generate(message: Message, state: FSMContext) -> None:
     assert _client is not None and _db is not None
@@ -340,6 +361,14 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
         return
     elif gen_type == "text_photo":
+        # Check if user has avatars
+        assert _db is not None
+        avatars = await _db.list_avatars(message.from_user.id)
+        if avatars:
+            await state.set_state(GenerateStates.choosing_avatar)
+            await message.answer(t(lang, "avatars.choose_source"), reply_markup=avatar_source_keyboard(lang))
+            return
+
         await state.update_data(photos_needed=1, photos=[])
         await state.set_state(GenerateStates.waiting_photos)
         await message.answer(t(lang, "gen.upload_photo"))
@@ -385,6 +414,54 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     else:
         await message.answer(t(lang, "gen.unknown_type"))
         await state.clear()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data == "source:photo")
+async def avatar_source_photo(callback: CallbackQuery, state: FSMContext) -> None:
+    st = await state.get_data()
+    lang = st.get("lang")
+    await state.update_data(photos_needed=1, photos=[])
+    await state.set_state(GenerateStates.waiting_photos)
+    await callback.message.edit_text(t(lang, "gen.upload_photo"))
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data == "source:avatar")
+async def avatar_source_list(callback: CallbackQuery, state: FSMContext) -> None:
+    assert _db is not None
+    st = await state.get_data()
+    lang = st.get("lang")
+    items = await _db.list_avatars(callback.from_user.id)
+    if not items:
+        await callback.answer(t(lang, "avatars.empty"), show_alert=True)
+        return
+    
+    await callback.message.edit_text(t(lang, "avatars.pick_hint"), reply_markup=avatar_pick_keyboard(items, lang))
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data.startswith("avatar:pick:"))
+async def avatar_pick(callback: CallbackQuery, state: FSMContext) -> None:
+    aid = callback.data.split(":", 2)[2]
+    assert _db is not None
+    avatar = await _db.get_avatar(aid)
+    if not avatar:
+         await callback.answer("Avatar not found", show_alert=True)
+         return
+    
+    await state.update_data(
+        avatar_file_path=avatar.get("file_path"),
+        avatar_display_name=avatar.get("display_name"),
+        photos_needed=1,
+        photos=[], 
+    )
+    
+    st = await state.get_data()
+    lang = st.get("lang")
+    await state.set_state(GenerateStates.choosing_ratio)
+    await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
+    await callback.answer()
+
 
 
 @router.message(StateFilter(GenerateStates.waiting_photo_count))
@@ -539,7 +616,10 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
     if gen_type in {"text_photo", "text_multi"}:
-        summary += f"• Фото: {len(photos)} из {photos_needed}"
+        if photos:
+            summary += f"• Фото: {len(photos)} из {photos_needed}"
+        elif st.get("avatar_display_name"):
+            summary += f"• Аватар: {st.get('avatar_display_name')}"
 
     await state.set_state(GenerateStates.confirming)
     try:
@@ -639,6 +719,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     gen_type = st.get("gen_type")
     ratio = st.get("ratio", "auto")
     photos = st.get("photos", [])
+    avatar_path = st.get("avatar_file_path")
 
     # Проверка токенов перед запуском (Supabase)
     preferred = str(st.get("preferred_model") or "")
@@ -675,8 +756,16 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 telegram_urls_to_upload.append(tg_file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+    
+    if avatar_path:
+        try:
+            signed = await _db.create_signed_url(avatar_path)
+            if signed:
+                image_urls.append(signed)
+        except Exception as e:
+            _logger.warning("Failed to sign avatar url: %s", e)
 
-    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars=0"
+    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={'yes' if avatar_path else 'no'}"
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]", 

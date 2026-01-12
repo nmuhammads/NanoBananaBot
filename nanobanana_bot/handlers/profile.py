@@ -43,6 +43,7 @@ async def profile(message: Message) -> None:
         keyboard=[
             [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "kb.topup"))],
             [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "avatars.btn_label"))],
         ],
         resize_keyboard=True,
     )
