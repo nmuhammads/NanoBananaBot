@@ -26,6 +26,15 @@ def _language_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
+def get_main_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
+        ],
+        resize_keyboard=True,
+    )
+
 
 @router.message(CommandStart())
 async def start(message: Message) -> None:
@@ -74,13 +83,8 @@ async def start(message: Message) -> None:
     lang = normalize_lang(existing.get("language_code") or message.from_user.language_code)
     balance = await _db.get_token_balance(message.from_user.id)
 
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
-            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
-        ],
-        resize_keyboard=True,
-    )
+    keyboard = get_main_keyboard(lang)
+
 
     await message.answer(
         t(lang, "start.welcome", name=html.bold(html.quote(str(message.from_user.full_name or ''))), balance=balance),
@@ -126,13 +130,8 @@ async def set_lang(callback: CallbackQuery) -> None:
 
     # Показ приветствия и клавиатуры на выбранном языке
     balance = await _db.get_token_balance(callback.from_user.id)
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
-            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
-        ],
-        resize_keyboard=True,
-    )
+    keyboard = get_main_keyboard(lang)
+
     await callback.message.answer(
         t(lang, "start.welcome", name=html.bold(html.quote(str(callback.from_user.full_name or ''))), balance=balance),
         reply_markup=keyboard,

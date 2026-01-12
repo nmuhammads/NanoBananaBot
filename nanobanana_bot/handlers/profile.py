@@ -16,6 +16,8 @@ def setup(database: Database) -> None:
     _db = database
 
 
+from .start import get_main_keyboard
+
 @router.message(Command("profile"))
 async def profile(message: Message) -> None:
     assert _db is not None
@@ -39,13 +41,7 @@ async def profile(message: Message) -> None:
     full_name = full_name.strip() or message.from_user.full_name
 
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
-            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
-        ],
-        resize_keyboard=True,
-    )
+    keyboard = get_main_keyboard(lang)
 
     await message.answer(
         (
