@@ -24,6 +24,8 @@ import logging
 import httpx
 
 
+from .start import get_main_keyboard
+
 router = Router(name="generate")
 
 _client: NanoBananaClient | None = None
@@ -41,6 +43,7 @@ def setup(client: NanoBananaClient, database: Database, cache: Cache | None = No
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
+    choosing_avatar = State()
     waiting_prompt = State()
     waiting_photo_count = State()
     waiting_photos = State()
@@ -174,8 +177,8 @@ def post_result_reply_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
-            [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
-            [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
         ],
         resize_keyboard=True,
     )
@@ -199,6 +202,46 @@ def photo_count_keyboard(selected: int | None = None, lang: str | None = None) -
     rows.append([InlineKeyboardButton(text=t(lang, "gen.confirm_label"), callback_data="pc:confirm")])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def avatar_source_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "avatars.source_photo"), callback_data="source:photo")],
+            [InlineKeyboardButton(text=t(lang, "avatars.source_avatar"), callback_data="source:avatar")],
+        ]
+    )
+
+
+def avatar_pick_keyboard(avatars: list[dict], lang: str | None = None) -> InlineKeyboardMarkup:
+    kb = []
+    for a in avatars:
+        name = a.get("display_name") or "Avatar"
+        aid = a.get("id")
+        kb.append([InlineKeyboardButton(text=f"👤 {name}", callback_data=f"avatar:pick:{aid}")])
+    kb.append([InlineKeyboardButton(text=t(lang, "avatars.source_photo"), callback_data="source:photo")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def avatar_multi_pick_keyboard(avatars: list[dict], selected_ids: list[str], lang: str | None = None) -> InlineKeyboardMarkup:
+    """Multi-selection keyboard with checkboxes."""
+    kb = []
+    for a in avatars:
+        name = a.get("display_name") or "Avatar"
+        aid = a.get("id")
+        # Check if selected
+        is_selected = str(aid) in selected_ids
+        mark = "✅ " if is_selected else ""
+        kb.append([InlineKeyboardButton(text=f"{mark}{name}", callback_data=f"avatar:toggle:{aid}")])
+    
+    # Check if any selected to enable confirm button
+    if selected_ids:
+        kb.append([InlineKeyboardButton(text=t(lang, "avatars.confirm_selection", count=len(selected_ids)), callback_data="avatar:confirm")])
+    
+    kb.append([InlineKeyboardButton(text=t(lang, "avatars.source_photo"), callback_data="source:photo")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
 
 
 @router.message(Command("generate"))
@@ -233,6 +276,11 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
     await state.update_data(user_id=message.from_user.id, lang=lang)
+    
+    # 1. Сброс клавиатуры (убираем кнопку "Повторить")
+    await message.answer("NanoBanana 🍌", reply_markup=get_main_keyboard(lang))
+    
+    # 2. Меню выбора типа (Inline)
     await message.answer(
         t(lang, "gen.choose_method"),
         reply_markup=type_keyboard(lang),
@@ -339,7 +387,33 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         await state.set_state(GenerateStates.choosing_ratio)
         await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
         return
-    elif gen_type == "text_photo":
+    elif gen_type == "text_photo" or gen_type == "text_multi":
+        # Check if user has avatars
+        assert _db is not None
+        avatars = await _db.list_avatars(message.from_user.id)
+        if avatars:
+            await state.set_state(GenerateStates.choosing_avatar)
+            
+            if gen_type == "text_multi":
+                 # For multi: Initialize empty selection
+                 await state.update_data(multi_avatar_selection=[])
+                 await message.answer(t(lang, "avatars.choose_source"), reply_markup=avatar_source_keyboard(lang))
+            else:
+                 await message.answer(t(lang, "avatars.choose_source"), reply_markup=avatar_source_keyboard(lang))
+            return
+
+        photos_needed = 1 if gen_type == "text_photo" else 5  # default max for multi? no, check later
+        if gen_type == "text_multi":
+            # For multi we default to photos_needed=1 initially then ask count or similar? 
+            # Original logic for text_multi sets waiting_photo_count or waiting_photos directly?
+            # Let's check original... it usually asks for count. 
+            pass # We will fallthrough to photo upload logic below if no avatars
+
+        if gen_type == "text_multi":
+             await state.set_state(GenerateStates.waiting_photo_count)
+             await message.answer(t(lang, "gen.how_many_photos"), reply_markup=photo_count_keyboard(lang=lang))
+             return
+
         await state.update_data(photos_needed=1, photos=[])
         await state.set_state(GenerateStates.waiting_photos)
         await message.answer(t(lang, "gen.upload_photo"))
@@ -385,6 +459,118 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     else:
         await message.answer(t(lang, "gen.unknown_type"))
         await state.clear()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data == "source:photo")
+async def avatar_source_photo(callback: CallbackQuery, state: FSMContext) -> None:
+    st = await state.get_data()
+    lang = st.get("lang")
+    await state.update_data(photos_needed=1, photos=[])
+    await state.set_state(GenerateStates.waiting_photos)
+    await callback.message.edit_text(t(lang, "gen.upload_photo"))
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data == "source:avatar")
+async def avatar_source_list(callback: CallbackQuery, state: FSMContext) -> None:
+    assert _db is not None
+    st = await state.get_data()
+    lang = st.get("lang")
+    items = await _db.list_avatars(callback.from_user.id)
+    if not items:
+        await callback.answer(t(lang, "avatars.empty"), show_alert=True)
+        return
+    
+    args = st.get("gen_type")
+    
+    # If text_multi, show multi-select keyboard
+    if args == "text_multi":
+        await callback.message.edit_text(t(lang, "avatars.pick_multi_hint"), reply_markup=avatar_multi_pick_keyboard(items, [], lang))
+    else:
+        # Single select
+        await callback.message.edit_text(t(lang, "avatars.pick_hint"), reply_markup=avatar_pick_keyboard(items, lang))
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data.startswith("avatar:toggle:"))
+async def avatar_toggle(callback: CallbackQuery, state: FSMContext) -> None:
+    aid = callback.data.split(":", 2)[2]
+    assert _db is not None
+    st = await state.get_data()
+    lang = st.get("lang")
+    current_selection = st.get("multi_avatar_selection") or []
+    
+    if aid in current_selection:
+        current_selection.remove(aid)
+    else:
+        if len(current_selection) >= 10:
+             await callback.answer(t(lang, "avatars.max_selected"), show_alert=True)
+             return
+        current_selection.append(aid)
+    
+    await state.update_data(multi_avatar_selection=current_selection)
+    
+    items = await _db.list_avatars(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=avatar_multi_pick_keyboard(items, current_selection, lang))
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data == "avatar:confirm")
+async def avatar_confirm_multi(callback: CallbackQuery, state: FSMContext) -> None:
+    assert _db is not None
+    st = await state.get_data()
+    selected_ids = st.get("multi_avatar_selection") or []
+    lang = st.get("lang")
+    
+    if not selected_ids:
+        await callback.answer("Select at least one", show_alert=True)
+        return
+
+    # Fetch full avatar objects
+    # We could optimize by fetching only selected, but get_avatar is single. 
+    # Or just iterate the list we have? We don't have list in state, only IDs.
+    # Re-fetch list to match objects.
+    all_avatars = await _db.list_avatars(callback.from_user.id)
+    selected_objects = [a for a in all_avatars if str(a.get("id")) in selected_ids]
+    
+    if not selected_objects:
+        await callback.answer("Error: selection invalid", show_alert=True)
+        return
+        
+    await state.update_data(
+        selected_avatars=selected_objects,
+        photos_needed=len(selected_objects),
+        photos=[], # No uploaded photos
+        avatar_file_path=None, # Clear single
+    )
+    
+    await state.set_state(GenerateStates.choosing_ratio)
+    await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data.startswith("avatar:pick:"))
+async def avatar_pick(callback: CallbackQuery, state: FSMContext) -> None:
+    aid = callback.data.split(":", 2)[2]
+    assert _db is not None
+    avatar = await _db.get_avatar(aid)
+    if not avatar:
+         await callback.answer("Avatar not found", show_alert=True)
+         return
+    
+    await state.update_data(
+        avatar_file_path=avatar.get("file_path"),
+        avatar_display_name=avatar.get("display_name"),
+        photos_needed=1,
+        photos=[], 
+    )
+    
+    st = await state.get_data()
+    lang = st.get("lang")
+    await state.set_state(GenerateStates.choosing_ratio)
+    await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
+    await callback.answer()
+
 
 
 @router.message(StateFilter(GenerateStates.waiting_photo_count))
@@ -539,7 +725,13 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
     if gen_type in {"text_photo", "text_multi"}:
-        summary += f"• Фото: {len(photos)} из {photos_needed}"
+        if photos:
+            summary += f"• Фото: {len(photos)} из {photos_needed}"
+        elif st.get("avatar_display_name"):
+            summary += f"• Аватар: {st.get('avatar_display_name')}"
+        elif st.get("selected_avatars"):
+            count = len(st.get("selected_avatars"))
+            summary += f"• Аватары: {count} шт."
 
     await state.set_state(GenerateStates.confirming)
     try:
@@ -639,6 +831,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     gen_type = st.get("gen_type")
     ratio = st.get("ratio", "auto")
     photos = st.get("photos", [])
+    avatar_path = st.get("avatar_file_path")
 
     # Проверка токенов перед запуском (Supabase)
     preferred = str(st.get("preferred_model") or "")
@@ -675,8 +868,30 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 telegram_urls_to_upload.append(tg_file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
+    
+    if avatar_path:
+        try:
+            signed = await _db.create_signed_url(avatar_path)
+            if signed:
+                image_urls.append(signed)
+        except Exception as e:
+            _logger.warning("Failed to sign avatar url: %s", e)
+    
+    if st.get("selected_avatars"):
+        for av in st.get("selected_avatars"):
+            path = av.get("file_path")
+            if path:
+                try:
+                    signed = await _db.create_signed_url(path)
+                    if signed:
+                        image_urls.append(signed)
+                except Exception as e:
+                     _logger.warning("Failed to sign avatar url %s: %s", path, e)
 
-    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars=0"
+    count_avatars = len(st.get("selected_avatars") or [])
+    if avatar_path: count_avatars = 1
+    
+    payload_desc = f"type={gen_type}; ratio={ratio}; photos={len(photos)}; avatars={count_avatars}"
     generation = await _db.create_generation(
         user_id, 
         f"{prompt} [{payload_desc}]", 
@@ -862,6 +1077,8 @@ async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str
             
     except Exception as e:
         _logger.error("Error in async R2 upload task for gen %s: %s", generation_id, e)
+
+
 
 
 # Повтор последнего запроса генерации (любой тип, включая фото) из кеша

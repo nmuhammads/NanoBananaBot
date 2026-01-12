@@ -24,6 +24,7 @@ from .handlers import generate as generate_handler
 from .handlers import profile as profile_handler
 from .handlers import topup as topup_handler
 from .handlers import prices as prices_handler
+from .handlers import avatars as avatars_handler
 from .handlers import fallback as fallback_handler
 
 # Configure logging
@@ -63,13 +64,16 @@ generate_handler.setup(client, db, cache, r2_client)
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
 prices_handler.setup(db)
+avatars_handler.setup(db)
 
 # Routers
 dp.include_router(start_handler.router)
 dp.include_router(generate_handler.router)
 dp.include_router(profile_handler.router)
 dp.include_router(topup_handler.router)
+
 dp.include_router(prices_handler.router)
+dp.include_router(avatars_handler.router)
 # Fallback router must be last
 dp.include_router(fallback_handler.router)
 
@@ -234,6 +238,7 @@ async def on_startup() -> None:
             BotCommand(command="generate", description="Генерация изображения"),
             BotCommand(command="topup", description="Пополнить баланс токенов"),
             BotCommand(command="prices", description="Цены на токены"),
+            BotCommand(command="avatars", description="Мои аватары"),
             BotCommand(command="lang", description="Выбрать язык"),
             BotCommand(command="help", description="Список команд"),
         ])
@@ -405,8 +410,8 @@ async def nanobanana_callback(request: Request) -> dict:
                 reply_markup = ReplyKeyboardMarkup(
                     keyboard=[
                         [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
-                        [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
-                        [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+                        [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+                        [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
                     ],
                     resize_keyboard=True,
                 )
@@ -494,8 +499,8 @@ async def nanobanana_callback(request: Request) -> dict:
                     reply_markup = ReplyKeyboardMarkup(
                         keyboard=[
                             [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
-                            [KeyboardButton(text=t(lang, "kb.new_generation")), KeyboardButton(text=t(lang, "kb.start"))],
-                            [KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+                            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+                            [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
                         ],
                         resize_keyboard=True,
                     )

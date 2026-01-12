@@ -19,6 +19,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Keyboard labels
         "kb.profile": "Профиль 👤",
         "kb.topup": "Пополнить баланс ✨",
+        "kb.avatars": "Мои аватары 👤",
         "kb.generate": "Базовая генерация 🖼️",
         "kb.nanobanana_pro": "Nanobanana Pro 🔥",
         "kb.repeat_generation": "Повторить последнюю генерацию 🔁",
@@ -44,23 +45,46 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Help
         "help.body": (
             "ℹ️ <b>Помощь</b>\n\n"
-            "Команды:\n"
-            "- /start — приветствие и синхронизация баланса\n"
-            "- /profile — информация о пользователе и баланс\n"
-            "- /generate — создать изображение по текстовому запросу\n"
-            "- /topup — пополнить баланс токенов\n"
-            "- /prices — цены на токены\n"
-            "- /lang — выбрать язык интерфейса\n\n"
-            "Примеры промптов:\n"
-            "• космический нано банан, неоновая подсветка, стиль synthwave\n"
-            "• реалистичный портрет нано банана, мягкий свет, 85mm, f/1.8\n"
-            "• постер в стиле ретро, банан‑супергерой, зернистая текстура\n\n"
-            "Советы:\n"
-            "• Добавляйте стиль, освещение и композицию для лучшего результата\n"
-            "• Для фото‑редактирования отправьте фото и выберите «Текст + фото 🖼️»\n"
-            "• Соотношение сторон выбирается на шаге перед подтверждением\n\n"
-            "Стоимость: базовая — 3 токена/изобр., Pro — 15 токенов (4K по умолчанию). Пополнение: /topup"
+            "🤖 <b>Основные возможности:</b>\n"
+            "• <b>NanoBanana Basic</b> — быстрая генерация (3 токена).\n"
+            "• <b>NanoBanana Pro</b> — высокое качество 2K/4K (10/15 токенов).\n"
+            "• <b>Аватары 👤</b> — сохраните персонажа, чтобы использовать его в генерациях (Текст + Фото/Мульти).\n"
+            "• <b>Мульти-фото</b> — используйте несколько референсов или аватаров одновременно.\n\n"
+            "📜 <b>Команды:</b>\n"
+            "- /start — перезапустить бота\n"
+            "- /profile — профиль и баланс\n"
+            "- /avatars — управление вашими аватарами\n"
+            "- /generate — меню генерации\n"
+            "- /topup — пополнить баланс\n"
+            "- /prices — цены\n"
+            "- /lang — смена языка\n\n"
+            "💡 <b>Советы:</b>\n"
+            "• Используйте кнопку <b>«Мои аватары 👤»</b> в меню для быстрой настройки персонажей.\n"
+            "• В режиме «Текст + фото» можно выбрать сохраненный аватар вместо загрузки фото.\n"
+            "• Для Pro-режима доступны разные разрешения (Square, Youtube, Portrait).\n\n"
+            "💎 <b>Стоимость:</b>\n"
+            "Basic: 3 🍌\n"
+            "Pro 2K: 10 🍌\n"
+            "Pro 4K: 15 🍌\n"
         ),
+
+        # Avatars
+        "avatars.title": "👤 <b>Мои аватары</b>",
+        "avatars.add": "➕ Добавить аватар",
+        "avatars.empty": "У вас пока нет сохранённых аватаров. Добавьте первый, чтобы использовать его в генерациях!",
+        "avatars.delete_hint": "Нажмите на кнопку с именем аватара, чтобы удалить его.",
+        "avatars.upload_photo": "📸 Отправьте фото для аватара.",
+        "avatars.enter_name": "✍️ Введите название для этого аватара (до 30 символов).",
+        "avatars.saved": "✅ Аватар <b>{name}</b> сохранён!",
+        "avatars.deleted": "🗑️ Аватар удалён.",
+        "avatars.choose_source": "Вы хотите использовать сохранённый аватар или загрузить новое фото?",
+        "avatars.source_photo": "📷 Загрузить фото",
+        "avatars.source_avatar": "👤 Выбрать аватар",
+        "avatars.pick_hint": "Выберите аватар из списка:",
+        "avatars.pick_multi_hint": "Выберите до 10 аватаров (отметьте нужные галочками), затем нажмите «Подтвердить».",
+        "avatars.confirm_selection": "✅ Подтвердить выбор ({count})",
+        "avatars.max_selected": "Максимум 10 аватаров!",
+        "avatars.btn_label": "Мои аватары 👤",
 
         # Profile
         "profile.title": "👤 <b>Профиль</b>",
@@ -148,6 +172,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Keyboard labels
         "kb.profile": "Profile 👤",
         "kb.topup": "Top up ✨",
+        "kb.avatars": "My Avatars 👤",
         "kb.generate": "Basic generation 🖼️",
         "kb.nanobanana_pro": "Nanobanana Pro 🔥",
         "kb.repeat_generation": "Repeat last generation 🔁",
@@ -173,23 +198,46 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Help
         "help.body": (
             "ℹ️ <b>Help</b>\n\n"
-            "Commands:\n"
-            "- /start — greeting and balance sync\n"
-            "- /profile — user info and balance\n"
-            "- /generate — create image from text prompt\n"
-            "- /topup — top up tokens\n"
+            "🤖 <b>Key Features:</b>\n"
+            "• <b>NanoBanana Basic</b> — fast generation (3 tokens).\n"
+            "• <b>NanoBanana Pro</b> — high quality 2K/4K (10/15 tokens).\n"
+            "• <b>Avatars 👤</b> — save a character to reuse in generations (Text + Photo/Multi).\n"
+            "• <b>Multi-photo</b> — use multiple references or avatars at once.\n\n"
+            "📜 <b>Commands:</b>\n"
+            "- /start — restart bot\n"
+            "- /profile — profile & balance\n"
+            "- /avatars — manage your avatars\n"
+            "- /generate — generation menu\n"
+            "- /topup — top up balance\n"
             "- /prices — token prices\n"
-            "- /lang — choose interface language\n\n"
-            "Prompt examples:\n"
-            "• cosmic nano banana, neon glow, synthwave style\n"
-            "• realistic nano banana portrait, soft light, 85mm, f/1.8\n"
-            "• retro poster, banana superhero, grainy texture\n\n"
-            "Tips:\n"
-            "• Add style, lighting and composition for better results\n"
-            "• For photo editing send a photo and choose ‘Text + photo 🖼️’\n"
-            "• Aspect ratio is chosen right before confirmation\n\n"
-            "Cost: basic — 3 tokens/img, Pro — 15 tokens (4K default). Top up: /topup"
+            "- /lang — change language\n\n"
+            "💡 <b>Tips:</b>\n"
+            "• Use <b>'My Avatars 👤'</b> button for quick character setup.\n"
+            "• In 'Text + Photo' mode, you can pick a saved avatar instead of uploading.\n"
+            "• Pro mode supports various aspect ratios (Square, Youtube, Portrait).\n\n"
+            "💎 <b>Cost:</b>\n"
+            "Basic: 3 🍌\n"
+            "Pro 2K: 10 🍌\n"
+            "Pro 4K: 15 🍌\n"
         ),
+
+        # Avatars
+        "avatars.title": "👤 <b>My Avatars</b>",
+        "avatars.add": "➕ Add Avatar",
+        "avatars.empty": "You don't have saved avatars yet. Add one to use in generations!",
+        "avatars.delete_hint": "Press the button with avatar name to delete it.",
+        "avatars.upload_photo": "📸 Send a photo for the avatar.",
+        "avatars.enter_name": "✍️ Enter a name for this avatar (max 30 chars).",
+        "avatars.saved": "✅ Avatar <b>{name}</b> saved!",
+        "avatars.deleted": "🗑️ Avatar deleted.",
+        "avatars.choose_source": "Do you want to use a saved avatar or upload a new photo?",
+        "avatars.source_photo": "📷 Upload Photo",
+        "avatars.source_avatar": "👤 Choose Avatar",
+        "avatars.pick_hint": "Choose an avatar from the list:",
+        "avatars.pick_multi_hint": "Select up to 10 avatars (check them), then press 'Confirm'.",
+        "avatars.confirm_selection": "✅ Confirm Selection ({count})",
+        "avatars.max_selected": "Maximum 10 avatars!",
+        "avatars.btn_label": "My Avatars 👤",
 
         # Profile
         "profile.title": "👤 <b>Profile</b>",
