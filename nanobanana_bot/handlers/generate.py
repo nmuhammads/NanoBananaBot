@@ -278,7 +278,7 @@ async def start_generate(message: Message, state: FSMContext) -> None:
     await state.update_data(user_id=message.from_user.id, lang=lang)
     
     # 1. Сброс клавиатуры (убираем кнопку "Повторить")
-    await message.answer(t(lang, "kb.generate"), reply_markup=get_main_keyboard(lang))
+    await message.answer("NanoBanana 🍌", reply_markup=get_main_keyboard(lang))
     
     # 2. Меню выбора типа (Inline)
     await message.answer(
