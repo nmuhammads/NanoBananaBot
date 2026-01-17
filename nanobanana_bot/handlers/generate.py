@@ -240,12 +240,9 @@ async def start_generate(message: Message, state: FSMContext, model_version: str
     )
 
 
-@router.callback_query(StateFilter(GenerateStates.choosing_type))
+@router.callback_query(StateFilter(GenerateStates.choosing_type), F.data.startswith("gen_type:"))
 async def choose_type(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
-    if not data.startswith("gen_type:"):
-        await callback.answer()
-        return
     gen_type = data.split(":", 1)[1]
     _logger.info("User %s chose type=%s", callback.from_user.id, gen_type)
     await state.update_data(gen_type=gen_type)
@@ -384,7 +381,7 @@ async def receive_photo_count(message: Message, state: FSMContext) -> None:
     _logger.info("User %s typed while waiting_photo_count; suggested inline buttons", message.from_user.id)
 
 
-@router.callback_query(StateFilter(GenerateStates.waiting_photo_count))
+@router.callback_query(StateFilter(GenerateStates.waiting_photo_count), F.data.startswith("pc:"))
 async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
     if data.startswith("pc:select:"):
@@ -444,7 +441,7 @@ async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> N
         return
 
 
-@router.callback_query(StateFilter(GenerateStates.waiting_prompt))
+@router.callback_query(StateFilter(GenerateStates.waiting_prompt), F.data.startswith("avatar_src:"))
 async def avatar_source_choice(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
     if data == "avatar_src:new":
@@ -470,7 +467,7 @@ async def avatar_source_choice(callback: CallbackQuery, state: FSMContext) -> No
     await callback.answer()
 
 
-@router.callback_query(StateFilter(GenerateStates.choosing_avatar))
+@router.callback_query(StateFilter(GenerateStates.choosing_avatar), F.data.startswith("avatar_"))
 async def pick_avatar(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
     # Возврат к варианту «Отправить новое фото»
@@ -510,7 +507,7 @@ async def pick_avatar(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-@router.callback_query(StateFilter(GenerateStates.choosing_avatars_multi))
+@router.callback_query(StateFilter(GenerateStates.choosing_avatars_multi), F.data.startswith("avatar_multi:"))
 async def pick_avatars_multi(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
     assert _db is not None
@@ -698,12 +695,9 @@ async def start_generate_text_any(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(StateFilter(GenerateStates.choosing_model))
+@router.callback_query(StateFilter(GenerateStates.choosing_model), F.data.startswith("model:"))
 async def choose_model(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
-    if not data.startswith("model:"):
-        await callback.answer()
-        return
     model_version = data.split(":", 1)[1]
     _logger.info("User %s chose model=%s", callback.from_user.id, model_version)
     
@@ -742,12 +736,9 @@ async def upload_to_r2_and_update_db(generation_id: int, telegram_urls: list[str
         _logger.error("Error in async R2 upload task for gen %s: %s", generation_id, e)
 
 
-@router.callback_query(StateFilter(GenerateStates.choosing_ratio))
+@router.callback_query(StateFilter(GenerateStates.choosing_ratio), F.data.startswith("ratio:"))
 async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
-    if not data.startswith("ratio:"):
-        await callback.answer()
-        return
     ratio = data.split(":", 1)[1]
     await state.update_data(ratio=ratio)
     _logger.info("User %s chose ratio=%s", callback.from_user.id, ratio)
@@ -793,7 +784,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-@router.callback_query(StateFilter(GenerateStates.confirming))
+@router.callback_query(StateFilter(GenerateStates.confirming), F.data.startswith("confirm:"))
 async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     choice = (callback.data or "")
     if choice == "confirm:cancel":
@@ -1140,7 +1131,7 @@ async def repeat_last_generation(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateStates.repeating_confirm)
     await message.answer(summary, reply_markup=confirm_keyboard(lang))
 
-@router.callback_query(StateFilter(GenerateStates.repeating_confirm))
+@router.callback_query(StateFilter(GenerateStates.repeating_confirm), F.data.startswith("confirm:"))
 async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     choice = (callback.data or "")
     st = await state.get_data()
