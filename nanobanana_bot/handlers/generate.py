@@ -335,32 +335,9 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         _logger.info("User %s chose multi-photo mode", message.from_user.id)
         return
     elif gen_type == "edit_photo":
-        # В режиме редактирования фото приходит раньше, сейчас запрашиваем подтверждение сразу,
-        # пропускаем выбор соотношения и используем Auto (как у источника)
-        st2 = await state.get_data()
-        photos = st2.get("photos", [])
-        photos_needed = st2.get("photos_needed", 1)
-        ratio_label = t(lang, "gen.ratio.auto")
-        await state.update_data(ratio="auto")
-
-        type_map = {
-            "text": t(lang, "gen.type.text"),
-            "text_photo": t(lang, "gen.type.text_photo"),
-            "text_multi": t(lang, "gen.type.text_multi"),
-            "edit_photo": t(lang, "gen.type.edit_photo"),
-        }
-        gen_type_label = type_map.get(gen_type, str(gen_type))
-
-        summary = (
-            f"{t(lang, 'gen.summary.title')}\n\n"
-            f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-            f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
-            f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
-        )
-        summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
-
-        await state.set_state(GenerateStates.confirming)
-        await message.answer(summary, reply_markup=confirm_keyboard(lang))
+        # В режиме редактирования фото уже получено, теперь предлагаем выбрать соотношение сторон
+        await state.set_state(GenerateStates.choosing_ratio)
+        await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard())
         return
     else:
         await message.answer(t(lang, "gen.unknown_type"))
@@ -757,6 +734,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
         "text": t(lang, "gen.type.text"),
         "text_photo": t(lang, "gen.type.text_photo"),
         "text_multi": t(lang, "gen.type.text_multi"),
+        "edit_photo": t(lang, "gen.type.edit_photo"),
     }
     gen_type_label = type_map.get(gen_type, str(gen_type))
 
@@ -766,7 +744,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
         f"{t(lang, 'gen.summary.prompt', prompt=_format_prompt_html(prompt))}\n"
         f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     )
-    if gen_type in {"text_photo", "text_multi"}:
+    if gen_type in {"text_photo", "text_multi", "edit_photo"}:
         if gen_type == "text_photo" and isinstance(avatar_file_path, str) and avatar_file_path:
             summary += t(lang, "gen.summary.avatar", name=(avatar_display_name or "—"))
         elif gen_type == "text_multi":
@@ -776,6 +754,8 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
                 summary += t(lang, "gen.summary.avatars", names=names)
             else:
                 summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
+        elif gen_type == "edit_photo":
+            summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
         else:
             summary += t(lang, "gen.summary.photos", count=len(photos), needed=photos_needed)
 
