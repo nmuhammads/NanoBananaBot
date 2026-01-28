@@ -539,8 +539,18 @@ async def piapi_callback(request: Request) -> dict:
     Callback endpoint for Piapi API to deliver generated images.
     Piapi sends task object directly: {task_id, status, output: {image_urls: [...]}, ...}
     """
-    data = await request.json()
-    logger.info("Piapi callback received: task_id=%s, status=%s", data.get("task_id"), data.get("status"))
+    # Get raw body for debugging
+    raw_body = await request.body()
+    logger.info("Piapi callback raw body (first 500 chars): %s", raw_body[:500] if raw_body else b"EMPTY")
+    
+    try:
+        import json as json_module
+        data = json_module.loads(raw_body) if raw_body else {}
+    except Exception as parse_err:
+        logger.error("Piapi callback JSON parse error: %s", parse_err)
+        return {"ok": False, "error": "invalid json"}
+    
+    logger.info("Piapi callback parsed: task_id=%s, status=%s, keys=%s", data.get("task_id"), data.get("status"), list(data.keys()))
 
     # Parse query params for generationId/userId
     generation_id = None
