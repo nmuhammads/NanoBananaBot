@@ -32,14 +32,16 @@ _client: NanoBananaClient | None = None
 _db: Database | None = None
 _cache: Cache | None = None
 _r2: R2Client | None = None
+_gen_service = None  # GenerationService for Pro fallback
 _logger = logging.getLogger("nanobanana.generate")
 
-def setup(client: NanoBananaClient, database: Database, cache: Cache | None = None, r2_client: R2Client | None = None) -> None:
-    global _client, _db, _cache, _r2
+def setup(client: NanoBananaClient, database: Database, cache: Cache | None = None, r2_client: R2Client | None = None, generation_service = None) -> None:
+    global _client, _db, _cache, _r2, _gen_service
     _client = client
     _db = database
     _cache = cache
     _r2 = r2_client
+    _gen_service = generation_service
 
 class GenerateStates(StatesGroup):
     choosing_type = State()
@@ -941,21 +943,57 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception:
             _logger.debug("Failed to store last generation payload in cache", exc_info=True)
 
-        _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        _logger.info("Calling generation API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
         
         # Запускаем фоновую задачу загрузки в R2
         if _r2 and telegram_urls_to_upload:
              asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(telegram_urls_to_upload), _r2, _db))
 
-        image_url = await _client.generate_image(
-            prompt=prompt,
-            model=model,
-            image_urls=image_urls or None,
-            image_size=image_size,
-            output_format="png",
-            meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
-            resolution=st.get("resolution")
-        )
+        # Для NanoBanana Pro используем GenerationService с fallback
+        if model == "nano-banana-pro" and _gen_service is not None:
+            _logger.info("Using GenerationService with fallback for Pro model")
+            result = await _gen_service.generate_pro(
+                prompt=prompt,
+                image_urls=image_urls or None,
+                aspect_ratio=image_size,
+                resolution=st.get("resolution") or "2K",
+                meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
+            )
+            # Сохраним провайдера в БД
+            if gen_id is not None:
+                try:
+                    await _db.update_generation_provider(gen_id, result.get("provider", "kie"))
+                except Exception:
+                    pass
+            
+            # GenerationService возвращает awaiting_callback=True для async flow
+            if result.get("awaiting_callback"):
+                _logger.info("Async generation accepted via %s: user=%s gen_id=%s", result.get("provider"), user_id, gen_id)
+                current_balance = await _db.get_token_balance(user_id)
+                new_balance = max(0, int(current_balance) - required_tokens)
+                await _db.set_token_balance(user_id, new_balance)
+                _logger.info("Debited %s tokens (async): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
+                lang = st.get("lang")
+                await callback.message.edit_text(t(lang, "gen.task_accepted"))
+                await state.clear()
+                await callback.answer("Started")
+                return
+            else:
+                # Synchronous response with immediate image_url
+                image_url = result.get("image_url")
+                if not image_url:
+                    raise RuntimeError("No image URL in generation result")
+        else:
+            # Стандартный путь через NanoBananaClient
+            image_url = await _client.generate_image(
+                prompt=prompt,
+                model=model,
+                image_urls=image_urls or None,
+                image_size=image_size,
+                output_format="png",
+                meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
+                resolution=st.get("resolution")
+            )
     except Exception as e:
         msg = str(e)
         # Особый случай: провайдер принял задачу и пришлёт результат через callback

@@ -242,3 +242,34 @@ class Database:
             return str(signed)
         except Exception:
             return ""
+
+    async def get_app_config(self, key: str) -> Optional[str]:
+        """Get config value from app_config table."""
+        try:
+            res = (
+                self.client.table("app_config")
+                .select("value")
+                .eq("key", key)
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(res, "data", []) or []
+            if rows:
+                return rows[0].get("value")
+        except Exception:
+            pass
+        return None
+
+    async def set_app_config(self, key: str, value: str) -> None:
+        """Set config value in app_config table."""
+        self.client.table("app_config").upsert(
+            {"key": key, "value": value},
+            on_conflict="key"
+        ).execute()
+
+    async def update_generation_provider(self, generation_id: int, provider: str) -> None:
+        """Update api_provider field for generation."""
+        self.client.table("generations").update(
+            {"api_provider": provider}
+        ).eq("id", generation_id).execute()
+

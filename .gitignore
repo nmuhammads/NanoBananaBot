@@ -21,3 +21,4 @@ Docs/*
 .agent/*
 deploy logs.txt
 deploy logs.log
+migrations/001_piapi_fallback.sql

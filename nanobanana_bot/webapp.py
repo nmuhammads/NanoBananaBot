@@ -15,6 +15,8 @@ from .config import load_settings
 from .database import Database
 from .cache import Cache
 from .utils.nanobanana import NanoBananaClient
+from .utils.piapi import PiapiClient
+from .utils.generation_service import GenerationService
 from .utils.i18n import t, normalize_lang
 from .utils.r2 import R2Client
 from .middlewares.logging import SimpleLoggingMiddleware
@@ -50,6 +52,16 @@ client = NanoBananaClient(
     timeout_seconds=settings.request_timeout_seconds,
     callback_url=(settings.webhook_url.rstrip("/") + "/nb-callback") if settings.webhook_url else None,
 )
+piapi_client = PiapiClient(
+    api_key=settings.piapi_api_key,
+    timeout_seconds=settings.request_timeout_seconds,
+    callback_url=(settings.webhook_url.rstrip("/") + "/piapi-callback") if settings.webhook_url else None,
+)
+generation_service = GenerationService(
+    kie_client=client,
+    piapi_client=piapi_client,
+    db=db,
+)
 r2_client = R2Client()
 
 # Middlewares
@@ -60,7 +72,7 @@ dp.callback_query.middleware(RateLimitMiddleware(1.0))
 
 # Handlers setup
 start_handler.setup(db)
-generate_handler.setup(client, db, cache, r2_client)
+generate_handler.setup(client, db, cache, r2_client, generation_service)
 profile_handler.setup(db)
 topup_handler.setup(db, settings)
 prices_handler.setup(db)
@@ -518,6 +530,185 @@ async def nanobanana_callback(request: Request) -> dict:
         logger.exception("Unhandled error in NanoBanana callback: %s", e)
         return {"ok": False}
 
+    return {"ok": True}
+
+
+@app.post("/piapi-callback")
+async def piapi_callback(request: Request) -> dict:
+    """
+    Callback endpoint for Piapi API to deliver generated images.
+    Expected format: {code: 200, data: {task_id, status, output: {image_url}}, message}
+    """
+    data = await request.json()
+    logger.info("Piapi callback received: %s", {k: data.get(k) for k in ["code", "message"]})
+
+    # Parse query params for generationId/userId
+    generation_id = None
+    user_id = None
+    tokens_required = 3
+    try:
+        qp = request.query_params
+        qp_gen = qp.get("generationId")
+        qp_user = qp.get("userId")
+        if qp_gen:
+            try:
+                generation_id = int(qp_gen)
+            except Exception:
+                generation_id = qp_gen
+        if qp_user:
+            try:
+                user_id = int(qp_user)
+            except Exception:
+                user_id = qp_user
+    except Exception:
+        pass
+
+    # Check response code
+    code = data.get("code")
+    is_success = code == 200
+    
+    # Parse task data
+    task_data = data.get("data", {})
+    status = task_data.get("status", "").lower()
+    
+    # Handle completion
+    if is_success and status == "completed":
+        output = task_data.get("output", {})
+        image_url = output.get("image_url")
+        
+        if not image_url:
+            # Try alternative output formats
+            image_urls = output.get("image_urls") or []
+            if image_urls:
+                image_url = image_urls[0]
+        
+        if not image_url:
+            logger.warning("Piapi callback completed but no image_url: %s", data)
+            return {"ok": False, "error": "missing image_url"}
+        
+        # Mark generation as completed
+        if generation_id:
+            try:
+                await db.mark_generation_completed(int(generation_id), image_url)
+                await db.update_generation_provider(int(generation_id), "piapi")
+            except Exception as e:
+                logger.warning("Failed to mark generation completed: %s", e)
+        
+        # Fetch user_id from generation if not provided
+        if user_id is None and generation_id:
+            try:
+                gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
+                rows = getattr(gen, "data", []) or []
+                if rows:
+                    user_id = rows[0].get("user_id")
+            except Exception as e:
+                logger.warning("Failed to fetch user_id: %s", e)
+        
+        # Send image to user
+        if user_id:
+            try:
+                # Get user language
+                try:
+                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
+                    rows = getattr(res, "data", []) or []
+                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                except Exception:
+                    lang = "ru"
+                
+                reply_markup = ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
+                        [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+                        [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
+                    ],
+                    resize_keyboard=True,
+                )
+                
+                # Extract filename from URL
+                from urllib.parse import urlparse
+                filename = "image.png"
+                try:
+                    path = urlparse(str(image_url)).path
+                    if path:
+                        base = path.rsplit("/", 1)[-1]
+                        if base:
+                            filename = base
+                except Exception:
+                    pass
+                
+                try:
+                    file = URLInputFile(url=str(image_url), filename=filename)
+                    await bot.send_document(chat_id=int(user_id), document=file, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
+                except Exception as e_doc:
+                    logger.warning("Piapi: Failed to send as document: %s", e_doc)
+                    await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
+            except Exception as e:
+                logger.warning("Failed to send photo to user %s: %s", user_id, e)
+        
+        return {"ok": True}
+    
+    # Handle failure
+    if status == "failed" or not is_success:
+        error = task_data.get("error", {})
+        fail_msg = error.get("message") or data.get("message") or "Piapi generation failed"
+        
+        # Mark generation failed
+        if generation_id:
+            try:
+                await db.mark_generation_failed(int(generation_id), str(fail_msg))
+            except Exception as e:
+                logger.warning("Failed to mark generation failed: %s", e)
+        
+        # Fetch user_id if needed
+        if user_id is None and generation_id:
+            try:
+                gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
+                rows = getattr(gen, "data", []) or []
+                if rows:
+                    user_id = rows[0].get("user_id")
+            except Exception:
+                pass
+        
+        # Refund tokens and notify user
+        if user_id:
+            try:
+                current = await db.get_token_balance(int(user_id))
+                new_balance = current + tokens_required
+                await db.set_token_balance(int(user_id), new_balance)
+                logger.info("Refunded %s tokens: user=%s", tokens_required, user_id)
+            except Exception as e:
+                logger.warning("Failed to refund tokens: %s", e)
+            
+            try:
+                try:
+                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
+                    rows = getattr(res, "data", []) or []
+                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                except Exception:
+                    lang = "ru"
+                
+                reply_markup = ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
+                        [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+                        [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
+                    ],
+                    resize_keyboard=True,
+                )
+                
+                refund_note = f"Токены возвращены: +{tokens_required}" if lang == "ru" else f"Tokens refunded: +{tokens_required}"
+                await bot.send_message(
+                    chat_id=int(user_id),
+                    text=f"Ошибка генерации: {fail_msg}\n\n{refund_note}",
+                    reply_markup=reply_markup
+                )
+            except Exception as e:
+                logger.warning("Failed to notify user of failure: %s", e)
+        
+        return {"ok": True}
+    
+    # Still processing
+    logger.info("Piapi callback status: %s (task still processing)", status)
     return {"ok": True}
 
 
