@@ -552,6 +552,12 @@ async def piapi_callback(request: Request) -> dict:
     
     logger.info("Piapi callback parsed: task_id=%s, status=%s, keys=%s", data.get("task_id"), data.get("status"), list(data.keys()))
 
+    # Piapi wraps task object in {"timestamp": ..., "data": {...}}
+    # Extract nested data if present
+    task_data = data.get("data", data)  # Fallback to data itself if no "data" key
+    
+    logger.info("Piapi task_data: task_id=%s, status=%s", task_data.get("task_id"), task_data.get("status"))
+
     # Parse query params for generationId/userId
     generation_id = None
     user_id = None
@@ -573,12 +579,11 @@ async def piapi_callback(request: Request) -> dict:
     except Exception:
         pass
 
-    # Piapi sends data directly at root level, not wrapped in {code, data}
-    # Check for status field directly
-    status = str(data.get("status", "")).lower()
+    # Check for status field from task_data
+    status = str(task_data.get("status", "")).lower()
     
     if status == "completed":
-        output = data.get("output", {})
+        output = task_data.get("output", {})
         image_url = output.get("image_url")
         
         if not image_url:
@@ -654,7 +659,7 @@ async def piapi_callback(request: Request) -> dict:
     
     # Handle failure
     if status == "failed":
-        error = data.get("error", {})
+        error = task_data.get("error", {})
         fail_msg = error.get("message") or error.get("raw_message") or "Piapi generation failed"
         
         # Mark generation failed
