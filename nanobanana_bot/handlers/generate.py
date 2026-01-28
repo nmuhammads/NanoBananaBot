@@ -467,6 +467,17 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
 async def avatar_source_photo(callback: CallbackQuery, state: FSMContext) -> None:
     st = await state.get_data()
     lang = st.get("lang")
+    gen_type = st.get("gen_type")
+    
+    # For text_multi mode, redirect to photo count selection
+    if gen_type == "text_multi":
+        await state.set_state(GenerateStates.waiting_photo_count)
+        await state.update_data(selected_photo_count=None)
+        await callback.message.edit_text(t(lang, "gen.how_many_photos"), reply_markup=photo_count_keyboard(lang=lang))
+        await callback.answer()
+        return
+    
+    # For other modes (text_photo), request single photo
     await state.update_data(photos_needed=1, photos=[])
     await state.set_state(GenerateStates.waiting_photos)
     await callback.message.edit_text(t(lang, "gen.upload_photo"))
