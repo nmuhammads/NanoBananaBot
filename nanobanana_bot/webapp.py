@@ -537,10 +537,10 @@ async def nanobanana_callback(request: Request) -> dict:
 async def piapi_callback(request: Request) -> dict:
     """
     Callback endpoint for Piapi API to deliver generated images.
-    Expected format: {code: 200, data: {task_id, status, output: {image_url}}, message}
+    Piapi sends task object directly: {task_id, status, output: {image_urls: [...]}, ...}
     """
     data = await request.json()
-    logger.info("Piapi callback received: %s", {k: data.get(k) for k in ["code", "message"]})
+    logger.info("Piapi callback received: task_id=%s, status=%s", data.get("task_id"), data.get("status"))
 
     # Parse query params for generationId/userId
     generation_id = None
@@ -563,17 +563,12 @@ async def piapi_callback(request: Request) -> dict:
     except Exception:
         pass
 
-    # Check response code
-    code = data.get("code")
-    is_success = code == 200
+    # Piapi sends data directly at root level, not wrapped in {code, data}
+    # Check for status field directly
+    status = str(data.get("status", "")).lower()
     
-    # Parse task data
-    task_data = data.get("data", {})
-    status = task_data.get("status", "").lower()
-    
-    # Handle completion
-    if is_success and status == "completed":
-        output = task_data.get("output", {})
+    if status == "completed":
+        output = data.get("output", {})
         image_url = output.get("image_url")
         
         if not image_url:
@@ -648,9 +643,9 @@ async def piapi_callback(request: Request) -> dict:
         return {"ok": True}
     
     # Handle failure
-    if status == "failed" or not is_success:
-        error = task_data.get("error", {})
-        fail_msg = error.get("message") or data.get("message") or "Piapi generation failed"
+    if status == "failed":
+        error = data.get("error", {})
+        fail_msg = error.get("message") or error.get("raw_message") or "Piapi generation failed"
         
         # Mark generation failed
         if generation_id:
