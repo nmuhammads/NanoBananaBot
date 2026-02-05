@@ -91,6 +91,11 @@ def trigger_filter(message: Message) -> bool:
 async def restart_generate_any_state(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     _logger.info("restart_generate_any_state triggered by text='%s'", text)
+
+    # Сохраняем preferred_model перед очисткой state, чтобы не потерять Pro-режим
+    st = await state.get_data()
+    saved_preferred_model = st.get("preferred_model")
+
     if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
         assert _db is not None
         balance = await _db.get_token_balance(message.from_user.id)
@@ -102,7 +107,11 @@ async def restart_generate_any_state(message: Message, state: FSMContext) -> Non
         await start_generate(message, state)
         await state.update_data(preferred_model="nano-banana-pro")
         return
+
+    # Если пользователь был в Pro-режиме и начинает новую генерацию там же, сохраняем режим
     await start_generate(message, state)
+    if saved_preferred_model == "nano-banana-pro":
+        await state.update_data(preferred_model="nano-banana-pro")
 
 def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     kb = [
@@ -638,9 +647,19 @@ async def photo_count_callbacks(callback: CallbackQuery, state: FSMContext) -> N
         return
 
 
-@router.message(StateFilter(GenerateStates.waiting_photos), F.photo)
+@router.message(StateFilter(GenerateStates.waiting_photos), F.photo | F.document)
 async def receive_photo(message: Message, state: FSMContext) -> None:
-    photo_id = message.photo[-1].file_id
+    # Handle both compressed photos and document photos
+    photo_id = None
+    if message.photo:
+        photo_id = message.photo[-1].file_id
+    elif message.document and message.document.mime_type and message.document.mime_type.startswith("image/"):
+        photo_id = message.document.file_id
+
+    if not photo_id:
+        # Not a valid photo, let other handlers handle it
+        return
+
     data = await state.get_data()
     photos = list(data.get("photos", []))
     photos_needed = int(data.get("photos_needed", 1))
@@ -1197,7 +1216,13 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     ratio_val = str(payload.get("ratio") or "auto").strip()
     photos = payload.get("photos") or []
     image_size = payload.get("image_size")
-    model = payload.get("model") or ("google/nano-banana-edit" if photos else "google/nano-banana")
+    # Сохраняем модель из payload - это важно для повтора Pro-генераций
+    model = payload.get("model")
+    _logger.info("Repeat: user=%s origin_gen=%s model_from_payload=%s", user_id, origin_gen_id, model)
+    # Если модель не сохранена в payload, используем дефолтную
+    if not model:
+        model = "google/nano-banana-edit" if photos else "google/nano-banana"
+        _logger.info("Repeat: model not in payload, using default: %s", model)
     required_tokens = 15 if model == "nano-banana-pro" else 3
     balance = await _db.get_token_balance(user_id)
     if balance < required_tokens:
@@ -1266,20 +1291,39 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         image_size = ratio_map.get(ratio_val) if ratio_val in ratio_map else None
 
     try:
-        _logger.info("Calling KIE API for user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
+        _logger.info("Calling API for repeat: user=%s gen_id=%s model=%s size=%s images=%s", user_id, gen_id, model, image_size, len(image_urls))
 
         # Запускаем фоновую задачу загрузки в R2
         if _r2 and telegram_urls_to_upload:
              asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(telegram_urls_to_upload), _r2, _db))
 
-        image_url = await _client.generate_image(
-            prompt=prompt,
-            model=model,
-            image_urls=image_urls or None,
-            image_size=image_size,
-            output_format="png",
-            meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
-        )
+        # Для NanoBanana Pro используем GenerationService с fallback
+        if model == "nano-banana-pro" and _gen_service is not None:
+            _logger.info("Repeat: Using GenerationService with fallback for Pro model")
+            result = await _gen_service.generate_pro(
+                prompt=prompt,
+                image_urls=image_urls or None,
+                aspect_ratio=image_size,
+                resolution=payload.get("resolution") or "2K",
+                meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
+            )
+            # Сохраним провайдера в БД
+            if gen_id is not None:
+                try:
+                    await _db.update_generation_provider(gen_id, result.get("provider", "kie"))
+                except Exception:
+                    pass
+            image_url = result.get("task_id")  # Для async генерации возвращается task_id
+        else:
+            # Для базовой модели используем старый API
+            image_url = await _client.generate_image(
+                prompt=prompt,
+                model=model,
+                image_urls=image_urls or None,
+                image_size=image_size,
+                output_format="png",
+                meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
+            )
     except Exception as e:
         msg = str(e)
         if "awaiting callback" in msg:
