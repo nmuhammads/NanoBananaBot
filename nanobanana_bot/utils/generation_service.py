@@ -15,12 +15,13 @@ ApiProvider = Literal["kie", "piapi"]
 
 # Ошибки, при которых нужно переключиться на резервный провайдер
 FALLBACK_ERROR_PATTERNS = [
-    "503", "502", "524",  # Service unavailable
+    "503", "502", "500", "524",  # Service unavailable
     "401", "403", "access", "permission", "unauthorized",  # Auth errors (expired/invalid key)
     "429", "too many requests", "rate limit",  # Rate limiting
     "timeout", "econnrefused", "connection refused",  # Network errors
     "temporarily unavailable",
     "internal error",
+    "internal server error",
     "ai studio api http error",
     "service unavailable",
 ]
