@@ -136,7 +136,7 @@ async def avatar_receive_name(message: Message, state: FSMContext) -> None:
         content = b.getvalue()
         
         # Upload
-        await _db.upload_avatar(message.from_user.id, content, name)
+        await _db.upload_avatar(message.from_user.id, content, name, content_type="image/jpeg")
         
         await message.answer(t(lang, "avatars.saved", name=name))
         await state.clear()
