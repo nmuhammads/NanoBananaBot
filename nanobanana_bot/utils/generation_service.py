@@ -20,10 +20,13 @@ FALLBACK_ERROR_PATTERNS = [
     "429", "too many requests", "rate limit",  # Rate limiting
     "timeout", "econnrefused", "connection refused",  # Network errors
     "temporarily unavailable",
+    "currently unavailable",  # KIE "Service is currently unavailable" (E003)
     "internal error",
     "internal server error",
     "ai studio api http error",
     "service unavailable",
+    "no channel found",  # KIE infrastructure error (no processing channel)
+    "high demand",  # KIE overload error
 ]
 
 
