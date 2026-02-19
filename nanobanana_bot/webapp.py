@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, Header, HTTPException
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Update, BotCommand, BufferedInputFile, URLInputFile, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Update, BotCommand, BufferedInputFile, URLInputFile, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import load_settings
@@ -69,6 +69,19 @@ dp.message.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.midd
 dp.message.middleware(RateLimitMiddleware(1.0))
 dp.callback_query.middleware(SimpleLoggingMiddleware(logging.getLogger("nanobanana.middleware")))
 dp.callback_query.middleware(RateLimitMiddleware(1.0))
+
+
+def generation_id_copy_keyboard(lang: str | None, generation_id: int | str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t(lang, "gen.copy_id_button"),
+                    copy_text=CopyTextButton(text=str(generation_id)),
+                )
+            ]
+        ]
+    )
 
 # Handlers setup
 start_handler.setup(db)
@@ -376,9 +389,11 @@ async def nanobanana_callback(request: Request) -> dict:
                 generation_id = generation_id or meta.get("generationId")
                 user_id = user_id or meta.get("userId")
                 try:
-                    tr = int(meta.get("tokens")) if meta.get("tokens") is not None else tokens_required
-                    if tr > 0:
-                        tokens_required = tr
+                    tokens_raw = meta.get("tokens")
+                    if isinstance(tokens_raw, (int, str)):
+                        tr = int(tokens_raw)
+                        if tr > 0:
+                            tokens_required = tr
                 except Exception:
                     pass
             except Exception as e:
@@ -530,12 +545,26 @@ async def nanobanana_callback(request: Request) -> dict:
                         ],
                         resize_keyboard=True,
                     )
+                    result_caption = (
+                        t(lang, "gen.result_caption_with_id", generation_id=generation_id)
+                        if generation_id is not None
+                        else t(lang, "gen.result_caption")
+                    )
 
                     file = URLInputFile(url=str(image_url), filename=filename)
-                    await bot.send_document(chat_id=int(user_id), document=file, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
+                    await bot.send_document(chat_id=int(user_id), document=file, caption=result_caption, reply_markup=reply_markup)
                 except Exception as e_doc:
                     logger.warning("Failed to send as document, fallback to photo: %s", e_doc)
-                    await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
+                    await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=result_caption, reply_markup=reply_markup)
+                if generation_id is not None:
+                    try:
+                        await bot.send_message(
+                            chat_id=int(user_id),
+                            text=t(lang, "gen.generation_id", generation_id=generation_id),
+                            reply_markup=generation_id_copy_keyboard(lang, generation_id),
+                        )
+                    except Exception as e_copy:
+                        logger.warning("Failed to send copy-id button to user %s: %s", user_id, e_copy)
             except Exception as e:
                 logger.warning("Failed to send photo to user %s: %s", user_id, e)
         else:
@@ -659,13 +688,27 @@ async def piapi_callback(request: Request) -> dict:
                             filename = base
                 except Exception:
                     pass
+                result_caption = (
+                    t(lang, "gen.result_caption_with_id", generation_id=generation_id)
+                    if generation_id is not None
+                    else t(lang, "gen.result_caption")
+                )
                 
                 try:
                     file = URLInputFile(url=str(image_url), filename=filename)
-                    await bot.send_document(chat_id=int(user_id), document=file, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
+                    await bot.send_document(chat_id=int(user_id), document=file, caption=result_caption, reply_markup=reply_markup)
                 except Exception as e_doc:
                     logger.warning("Piapi: Failed to send as document: %s", e_doc)
-                    await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=reply_markup)
+                    await bot.send_photo(chat_id=int(user_id), photo=image_url, caption=result_caption, reply_markup=reply_markup)
+                if generation_id is not None:
+                    try:
+                        await bot.send_message(
+                            chat_id=int(user_id),
+                            text=t(lang, "gen.generation_id", generation_id=generation_id),
+                            reply_markup=generation_id_copy_keyboard(lang, generation_id),
+                        )
+                    except Exception as e_copy:
+                        logger.warning("Piapi: Failed to send copy-id button to user %s: %s", user_id, e_copy)
             except Exception as e:
                 logger.warning("Failed to send photo to user %s: %s", user_id, e)
         

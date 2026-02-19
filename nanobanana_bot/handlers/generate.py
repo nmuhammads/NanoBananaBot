@@ -4,6 +4,7 @@ from aiogram.types import (
     Message,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    CopyTextButton,
     CallbackQuery,
     BufferedInputFile,
     ReplyKeyboardMarkup,
@@ -192,6 +193,19 @@ def post_result_reply_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
             [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
         ],
         resize_keyboard=True,
+    )
+
+
+def generation_id_copy_keyboard(lang: str | None, generation_id: int | str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t(lang, "gen.copy_id_button"),
+                    copy_text=CopyTextButton(text=str(generation_id)),
+                )
+            ]
+        ]
     )
 
 
@@ -1088,6 +1102,11 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     ) if callback.message.photo else await callback.message.edit_text(
         t(lang, "gen.done_text", balance=new_balance, ratio=ratio)
     )
+    result_caption = (
+        t(lang, "gen.result_caption_with_id", generation_id=gen_id)
+        if gen_id is not None
+        else t(lang, "gen.result_caption")
+    )
     # Отправим изображение как документ (URLInputFile) для сохранения качества
     try:
         from urllib.parse import urlparse
@@ -1101,10 +1120,18 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception:
             pass
         file = URLInputFile(url=str(image_url), filename=filename)
-        await callback.message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+        await callback.message.answer_document(document=file, caption=result_caption, reply_markup=post_result_reply_keyboard(lang))
     except Exception as e:
         _logger.warning("Failed to send document, falling back to photo: %s", e)
-    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+        await callback.message.answer_photo(photo=image_url, caption=result_caption, reply_markup=post_result_reply_keyboard(lang))
+    if gen_id is not None:
+        try:
+            await callback.message.answer(
+                t(lang, "gen.generation_id", generation_id=gen_id),
+                reply_markup=generation_id_copy_keyboard(lang, gen_id),
+            )
+        except Exception as e_copy:
+            _logger.warning("Failed to send copy-id button: %s", e_copy)
     await state.clear()
     _logger.info("Generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
@@ -1313,7 +1340,26 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
                     await _db.update_generation_provider(gen_id, result.get("provider", "kie"))
                 except Exception:
                     pass
-            image_url = result.get("task_id")  # Для async генерации возвращается task_id
+            # GenerationService возвращает awaiting_callback=True для async flow
+            if result.get("awaiting_callback"):
+                current_balance = await _db.get_token_balance(user_id)
+                new_balance = max(0, int(current_balance) - required_tokens)
+                await _db.set_token_balance(user_id, new_balance)
+                _logger.info(
+                    "Debited %s tokens (async repeat): user=%s balance %s->%s",
+                    required_tokens,
+                    user_id,
+                    current_balance,
+                    new_balance,
+                )
+                await callback.message.edit_text(t(lang, "gen.task_accepted"))
+                await state.clear()
+                await callback.answer("Started")
+                return
+            else:
+                image_url = result.get("image_url")
+                if not image_url:
+                    raise RuntimeError("No image URL in repeat generation result")
         else:
             # Для базовой модели используем старый API
             image_url = await _client.generate_image(
@@ -1353,6 +1399,11 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     ) if callback.message.photo else await callback.message.edit_text(
         t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val)
     )
+    result_caption = (
+        t(lang, "gen.result_caption_with_id", generation_id=gen_id)
+        if gen_id is not None
+        else t(lang, "gen.result_caption")
+    )
     try:
         from urllib.parse import urlparse
         filename = "image"
@@ -1365,10 +1416,18 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception:
             pass
         file = URLInputFile(url=str(image_url), filename=filename)
-        await callback.message.answer_document(document=file, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+        await callback.message.answer_document(document=file, caption=result_caption, reply_markup=post_result_reply_keyboard(lang))
     except Exception as e_doc:
         _logger.warning("Failed to send document, falling back to photo: %s", e_doc)
-    await callback.message.answer_photo(photo=image_url, caption=t(lang, "gen.result_caption"), reply_markup=post_result_reply_keyboard(lang))
+        await callback.message.answer_photo(photo=image_url, caption=result_caption, reply_markup=post_result_reply_keyboard(lang))
+    if gen_id is not None:
+        try:
+            await callback.message.answer(
+                t(lang, "gen.generation_id", generation_id=gen_id),
+                reply_markup=generation_id_copy_keyboard(lang, gen_id),
+            )
+        except Exception as e_copy:
+            _logger.warning("Failed to send repeat copy-id button: %s", e_copy)
     await state.clear()
     _logger.info("Repeat generation completed: user=%s gen_id=%s image_url=%s", user_id, gen_id, image_url)
     await callback.answer("Started")
