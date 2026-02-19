@@ -311,7 +311,21 @@ async def nanobanana_callback(request: Request) -> dict:
     Expected JSON may include keys like: imageUrl/image_url, generationId, userId, taskId.
     """
     data = await request.json()
-    logger.info("NanoBanana callback received: %s", {k: data.get(k) for k in ["imageUrl", "image_url", "generationId", "userId", "taskId"]})
+    data_obj = data.get("data") or {}
+    logger.info(
+        "NanoBanana callback received: %s",
+        {
+            "imageUrl": data.get("imageUrl"),
+            "image_url": data.get("image_url"),
+            "generationId": data.get("generationId") or data_obj.get("generationId"),
+            "userId": data.get("userId") or data_obj.get("userId"),
+            "taskId": data.get("taskId") or data_obj.get("taskId"),
+            "code": data.get("code"),
+            "state": data_obj.get("state") or data.get("state"),
+            "msg": data.get("msg"),
+            "failMsg": data_obj.get("failMsg"),
+        },
+    )
 
     # KIE format: top-level {code,msg,data}, where data.resultJson is a JSON string with resultUrls[]
     # and data.param is a JSON string that contains meta.generationId/userId.

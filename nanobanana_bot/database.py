@@ -167,7 +167,7 @@ class Database:
         path = f"{int(user_id)}/{uuid4().hex}{ext}"
         bucket = self.client.storage.from_("photo_reference")
         # Upload (private bucket). If file exists, let it fail
-        bucket.upload(path, file_bytes, {"contentType": content_type or "image/jpeg"})
+        bucket.upload(path, file_bytes, {"content-type": content_type or "image/jpeg"})
         # Record in avatars table
         created = (
             self.client.table("avatars")
@@ -272,4 +272,3 @@ class Database:
         self.client.table("generations").update(
             {"api_provider": provider}
         ).eq("id", generation_id).execute()
-
