@@ -455,31 +455,9 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
     elif gen_type == "edit_photo":
         # В режиме редактирования фото приходит раньше, сейчас запрашиваем подтверждение сразу,
         # пропускаем выбор соотношения и используем Auto (как у источника)
-        st2 = await state.get_data()
-        photos = st2.get("photos", [])
-        photos_needed = st2.get("photos_needed", 1)
-        ratio_label = t(lang, "gen.ratio.auto")
         await state.update_data(ratio="auto")
 
-        type_map = {
-            "text": t(lang, "gen.type.text"),
-            "text_photo": t(lang, "gen.type.text_photo"),
-            "text_multi": t(lang, "gen.type.text_multi"),
-            "edit_photo": t(lang, "gen.type.edit_photo"),
-        }
-        gen_type_label = type_map.get(gen_type, str(gen_type))
-
-        display_prompt = truncate_prompt(str(prompt or ''))
-        summary = (
-            f"{t(lang, 'gen.summary.title')}\n\n"
-            f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-            f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
-            f"{t(lang, 'gen.summary.ratio', ratio=ratio_label)}\n"
-        )
-        summary += f"• Фото: {len(photos)} из {photos_needed}"
-
-        await state.set_state(GenerateStates.confirming)
-        await message.answer(summary, reply_markup=confirm_keyboard(lang))
+        await show_confirmation(message, state, lang)
         return
     else:
         await message.answer(t(lang, "gen.unknown_type"))
@@ -580,8 +558,11 @@ async def avatar_confirm_multi(callback: CallbackQuery, state: FSMContext) -> No
         avatar_file_path=None, # Clear single
     )
     
-    await state.set_state(GenerateStates.choosing_ratio)
-    await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
+    if st.get("ratio") and st.get("resolution"):
+        await show_confirmation(callback, state, lang)
+    else:
+        await state.set_state(GenerateStates.choosing_ratio)
+        await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
     await callback.answer()
 
 
@@ -603,8 +584,11 @@ async def avatar_pick(callback: CallbackQuery, state: FSMContext) -> None:
     
     st = await state.get_data()
     lang = st.get("lang")
-    await state.set_state(GenerateStates.choosing_ratio)
-    await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
+    if st.get("ratio") and st.get("resolution"):
+        await show_confirmation(callback, state, lang)
+    else:
+        await state.set_state(GenerateStates.choosing_ratio)
+        await callback.message.edit_text(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
     await callback.answer()
 
 
@@ -699,8 +683,12 @@ async def receive_photo(message: Message, state: FSMContext) -> None:
         await message.answer(t(lang, "gen.edit.enter_prompt"))
         return
     # Обычные режимы — выбор соотношения сторон
-    await state.set_state(GenerateStates.choosing_ratio)
-    await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
+    st = await state.get_data()
+    if st.get("ratio") and st.get("resolution"):
+        await show_confirmation(message, state, lang)
+    else:
+        await state.set_state(GenerateStates.choosing_ratio)
+        await message.answer(t(lang, "gen.choose_ratio"), reply_markup=ratio_keyboard(lang))
 
 
 @router.message(StateFilter(GenerateStates.waiting_photos))
@@ -729,6 +717,82 @@ async def require_photo(message: Message, state: FSMContext) -> None:
 
 
 
+async def show_confirmation(message_or_callback, state: FSMContext, lang: str) -> None:
+    st = await state.get_data()
+    gen_type = st.get("gen_type")
+    prompt = st.get("prompt")
+    ratio = st.get("ratio")
+    resolution = st.get("resolution")
+    price = st.get("tokens_required")
+    photos = st.get("photos", [])
+    photos_needed = st.get("photos_needed")
+
+    type_map = {
+        "text": t(lang, "gen.type.text"),
+        "text_photo": t(lang, "gen.type.text_photo"),
+        "text_multi": t(lang, "gen.type.text_multi"),
+        "edit_photo": t(lang, "gen.type.edit_photo"),
+    }
+    gen_type_label = type_map.get(gen_type, str(gen_type))
+    
+    display_prompt = truncate_prompt(str(prompt or ''))
+    
+    summary = (
+        f"{t(lang, 'gen.summary.title')}\n\n"
+        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
+    )
+    if ratio:
+        summary += f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
+    if resolution and price:
+        summary += f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
+        
+    if gen_type in {"text_photo", "text_multi", "edit_photo"}:
+        if photos:
+            summary += f"• Фото: {len(photos)} из {photos_needed}\n"
+        elif st.get("avatar_display_name"):
+            summary += f"• Аватар: {st.get('avatar_display_name')}\n"
+        elif st.get("selected_avatars"):
+            count = len(st.get("selected_avatars"))
+            summary += f"• Аватары: {count} шт.\n"
+
+    await state.set_state(GenerateStates.confirming)
+    
+    markup = confirm_keyboard(lang)
+    try:
+        if isinstance(message_or_callback, Message):
+            await message_or_callback.answer(summary, reply_markup=markup)
+        else:
+            await message_or_callback.message.edit_text(summary, reply_markup=markup)
+    except TelegramBadRequest as e:
+        if "MESSAGE_TOO_LONG" in str(e):
+            _logger.warning("Summary too long, sending shortened version")
+            short_summary = (
+                f"{t(lang, 'gen.summary.title')}\n\n"
+                f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
+                f"• Промпт: (слишком длинный для отображения)\n"
+            )
+            if ratio:
+                short_summary += f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
+            if resolution and price:
+                short_summary += f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
+            if gen_type in {"text_photo", "text_multi", "edit_photo"}:
+                if photos:
+                    short_summary += f"• Фото: {len(photos)} из {photos_needed}\n"
+                elif st.get("avatar_display_name"):
+                    short_summary += f"• Аватар: {st.get('avatar_display_name')}\n"
+                elif st.get("selected_avatars"):
+                    count = len(st.get("selected_avatars"))
+                    short_summary += f"• Аватары: {count} шт.\n"
+                    
+            if isinstance(message_or_callback, Message):
+                await message_or_callback.answer(short_summary, reply_markup=markup)
+            else:
+                await message_or_callback.message.edit_text(short_summary, reply_markup=markup)
+        else:
+            raise
+
+
 @router.callback_query(StateFilter(GenerateStates.choosing_ratio), F.data.startswith("ratio:"))
 async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     data = callback.data or ""
@@ -740,12 +804,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     _logger.info("User %s chose ratio=%s", callback.from_user.id, ratio)
 
     st = await state.get_data()
-    gen_type = st.get("gen_type")
-    prompt = st.get("prompt")
-    photos = st.get("photos", [])
-    photos_needed = st.get("photos_needed")
     preferred_model = st.get("preferred_model")
-
     st2 = await state.get_data()
     lang = st2.get("lang")
 
@@ -756,46 +815,7 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
-    type_map = {
-        "text": t(lang, "gen.type.text"),
-        "text_photo": t(lang, "gen.type.text_photo"),
-        "text_multi": t(lang, "gen.type.text_multi"),
-    }
-    gen_type_label = type_map.get(gen_type, str(gen_type))
-
-    display_prompt = truncate_prompt(str(prompt or ''))
-    summary = (
-        f"{t(lang, 'gen.summary.title')}\n\n"
-        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
-        f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
-    )
-    if gen_type in {"text_photo", "text_multi"}:
-        if photos:
-            summary += f"• Фото: {len(photos)} из {photos_needed}"
-        elif st.get("avatar_display_name"):
-            summary += f"• Аватар: {st.get('avatar_display_name')}"
-        elif st.get("selected_avatars"):
-            count = len(st.get("selected_avatars"))
-            summary += f"• Аватары: {count} шт."
-
-    await state.set_state(GenerateStates.confirming)
-    try:
-        await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
-    except TelegramBadRequest as e:
-        if "MESSAGE_TOO_LONG" in str(e):
-            _logger.warning("Summary too long for user %s, sending shortened version", callback.from_user.id)
-            short_summary = (
-                f"{t(lang, 'gen.summary.title')}\n\n"
-                f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-                f"• Промпт: (слишком длинный для отображения)\n"
-                f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
-            )
-            if gen_type in {"text_photo", "text_multi"}:
-                short_summary += f"• Фото: {len(photos)} из {photos_needed}"
-            await callback.message.edit_text(short_summary, reply_markup=confirm_keyboard(lang))
-        else:
-            raise
+    await show_confirmation(callback, state, lang)
     await callback.answer()
 
 
@@ -811,46 +831,12 @@ async def choose_resolution(callback: CallbackQuery, state: FSMContext) -> None:
 
     st = await state.get_data()
     lang = st.get("lang")
-    gen_type = st.get("gen_type")
-    prompt = st.get("prompt")
-    ratio = st.get("ratio")
-    
-    type_map = {
-        "text": t(lang, "gen.type.text"),
-        "text_photo": t(lang, "gen.type.text_photo"),
-        "text_multi": t(lang, "gen.type.text_multi"),
-    }
-    gen_type_label = type_map.get(gen_type, str(gen_type))
     
     # Determine price based on resolution
     price = 10 if resolution == "2K" else 15
     await state.update_data(tokens_required=price)
 
-    display_prompt = truncate_prompt(str(prompt or ''))
-    summary = (
-        f"{t(lang, 'gen.summary.title')}\n\n"
-        f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-        f"{t(lang, 'gen.summary.prompt', prompt=html.bold(html.quote(display_prompt)))}\n"
-        f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
-        f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
-    )
-
-    await state.set_state(GenerateStates.confirming)
-    try:
-        await callback.message.edit_text(summary, reply_markup=confirm_keyboard(lang))
-    except TelegramBadRequest as e:
-        if "MESSAGE_TOO_LONG" in str(e):
-            _logger.warning("Summary too long for user %s, sending shortened version", callback.from_user.id)
-            short_summary = (
-                f"{t(lang, 'gen.summary.title')}\n\n"
-                f"{t(lang, 'gen.summary.type', type=gen_type_label)}\n"
-                f"• Промпт: (слишком длинный для отображения)\n"
-                f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
-                f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
-            )
-            await callback.message.edit_text(short_summary, reply_markup=confirm_keyboard(lang))
-        else:
-            raise
+    await show_confirmation(callback, state, lang)
     await callback.answer()
 
 
