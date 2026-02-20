@@ -82,15 +82,20 @@ async def start(message: Message, state: FSMContext) -> None:
                         await _db.set_ref(message.from_user.id, safe)
     except Exception:
         pass
-    # Если пользователя нет в базе — это первый запуск: сначала попросим выбрать язык
+    # Если пользователя нет в базе — это первый запуск: автоматическая регистрация с языком пользователя (fallback to en)
     existing = await _db.get_user(message.from_user.id)
     if not existing:
-        lang_hint = normalize_lang(message.from_user.language_code)
-        await message.answer(
-            t(lang_hint, "start.choose_language"),
-            reply_markup=_language_keyboard(),
+        lang_code = message.from_user.language_code or "en"
+        lang_code = "ru" if lang_code.lower().startswith("ru") else "en"
+        
+        await _db.get_or_create_user(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name,
+            language_code=lang_code,
         )
-        return
+        existing = await _db.get_user(message.from_user.id) or {}
 
     # Иначе — обычное приветствие с уже выбранным языком
     lang = normalize_lang(existing.get("language_code") or message.from_user.language_code)
