@@ -70,7 +70,7 @@ async def start(message: Message, state: FSMContext) -> None:
                         try:
                             gen_id = int(parts[1])
                         except ValueError:
-                            pass
+                            gen_id = str(parts[1])
 
                 tag = ref_part[4:].lstrip("@").strip()
                 safe = "".join(ch for ch in tag if ch.isalnum() or ch in {"_", "-"})
@@ -103,15 +103,33 @@ async def start(message: Message, state: FSMContext) -> None:
 
     # Если передан gen_id, переходим к FSM генерации
     if gen_id is not None:
-        generation_data = await _db.get_generation(gen_id)
+        is_author_prompt = isinstance(gen_id, str) and str(gen_id).lower().startswith("p")
+        generation_data = None
+        if is_author_prompt:
+            try:
+                num_id = int(str(gen_id)[1:])
+                author_prompt = await _db.get_author_prompt(num_id)
+                if author_prompt and author_prompt.get("prompt_text"):
+                    generation_data = {"prompt": author_prompt["prompt_text"]}
+            except ValueError:
+                pass
+        else:
+            generation_data = await _db.get_generation(gen_id)
+
         if generation_data and generation_data.get("prompt"):
             prompt_text = generation_data["prompt"]
-            await state.update_data(
-                gen_type="text_photo",
-                prompt=prompt_text,
-                lang=lang,
-                preferred_model="nano-banana-pro"
-            )
+            update_kwargs = {
+                "gen_type": "text_photo",
+                "prompt": prompt_text,
+                "lang": lang,
+                "preferred_model": "nano-banana-pro"
+            }
+            if is_author_prompt:
+                update_kwargs["ratio"] = "3:4"
+                update_kwargs["resolution"] = "2K"
+                update_kwargs["tokens_required"] = 10
+            
+            await state.update_data(**update_kwargs)
             
             avatars = await _db.list_avatars(message.from_user.id)
             if avatars:
