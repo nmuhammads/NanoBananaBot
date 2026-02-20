@@ -1,6 +1,7 @@
 from aiogram import Router, html, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.fsm.context import FSMContext
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
@@ -37,9 +38,10 @@ def get_main_keyboard(lang: str) -> ReplyKeyboardMarkup:
 
 
 @router.message(CommandStart())
-async def start(message: Message) -> None:
+async def start(message: Message, state: FSMContext) -> None:
     assert _db is not None
     ref_value = None
+    gen_id = None
     try:
         txt = message.text or ""
         if txt.startswith("/start"):
@@ -59,7 +61,18 @@ async def start(message: Message) -> None:
         if ref_value:
             val = ref_value.strip()
             if val.lower().startswith("ref_"):
-                tag = val[4:].lstrip("@").strip()
+                # Парсинг опционального суффикса _gen_{id}
+                ref_part = val
+                if "_gen_" in val:
+                    parts = val.split("_gen_")
+                    if len(parts) == 2:
+                        ref_part = parts[0]
+                        try:
+                            gen_id = int(parts[1])
+                        except ValueError:
+                            pass
+
+                tag = ref_part[4:].lstrip("@").strip()
                 safe = "".join(ch for ch in tag if ch.isalnum() or ch in {"_", "-"})
                 if safe:
                     user = await _db.get_user(message.from_user.id)
@@ -82,6 +95,34 @@ async def start(message: Message) -> None:
     # Иначе — обычное приветствие с уже выбранным языком
     lang = normalize_lang(existing.get("language_code") or message.from_user.language_code)
     balance = await _db.get_token_balance(message.from_user.id)
+
+    # Если передан gen_id, переходим к FSM генерации
+    if gen_id is not None:
+        generation_data = await _db.get_generation(gen_id)
+        if generation_data and generation_data.get("prompt"):
+            prompt_text = generation_data["prompt"]
+            await state.update_data(
+                gen_type="text_photo",
+                prompt=prompt_text,
+                lang=lang,
+                preferred_model="nano-banana-pro"
+            )
+            
+            avatars = await _db.list_avatars(message.from_user.id)
+            if avatars:
+                await state.set_state("GenerateStates:choosing_avatar")
+                from .generate import avatar_source_keyboard
+                await message.answer(
+                    f"✨ 🍌 NanoBanana Pro\n\nПромпт получен. " + t(lang, "avatars.choose_source"),
+                    reply_markup=avatar_source_keyboard(lang)
+                )
+            else:
+                await state.update_data(photos_needed=1, photos=[])
+                await state.set_state("GenerateStates:waiting_photos")
+                await message.answer(
+                    f"✨ 🍌 NanoBanana Pro\n\nПромпт получен. " + t(lang, "gen.upload_photo")
+                )
+            return
 
     keyboard = get_main_keyboard(lang)
 
