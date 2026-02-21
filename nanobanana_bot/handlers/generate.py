@@ -896,8 +896,21 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 f = await callback.message.bot.get_file(pid)
                 # Предупреждение: это публичный URL с токеном — используйте только если доверяете провайдеру
                 tg_file_url = f"https://api.telegram.org/file/bot{callback.message.bot.token}/{f.file_path}"
-                image_urls.append(tg_file_url)
-                telegram_urls_to_upload.append(tg_file_url)
+                
+                r2_url = None
+                if _r2:
+                    try:
+                        r2_url = await _r2.upload_file_from_url(tg_file_url)
+                        if r2_url:
+                            _logger.info("Sync R2 upload success: %s", r2_url)
+                    except Exception as e:
+                        _logger.warning("Sync R2 upload failed, fallback to TG URL: %s", e)
+                
+                if r2_url:
+                    image_urls.append(r2_url)
+                else:
+                    image_urls.append(tg_file_url)
+                    telegram_urls_to_upload.append(tg_file_url)
             except Exception as e:
                 _logger.warning("Failed to fetch telegram file path for %s: %s", pid, e)
     
