@@ -858,7 +858,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     assert _client is not None and _db is not None
 
     st = await state.get_data()
-    user_id = int(st.get("user_id"))
+    user_id = callback.from_user.id
     prompt = st.get("prompt")
     gen_type = st.get("gen_type")
     ratio = st.get("ratio", "auto")
