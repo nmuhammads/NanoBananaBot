@@ -179,8 +179,8 @@ def resolution_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
 def confirm_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=t(lang, "gen.confirm.ok"), callback_data="confirm:ok")],
-            [InlineKeyboardButton(text=t(lang, "gen.confirm.cancel"), callback_data="confirm:cancel")],
+            [InlineKeyboardButton(text=t(lang, "gen.confirm.ok"), callback_data="confirm:ok", style="success")],
+            [InlineKeyboardButton(text=t(lang, "gen.confirm.cancel"), callback_data="confirm:cancel", style="danger")],
         ]
     )
 
