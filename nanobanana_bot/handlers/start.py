@@ -2,6 +2,7 @@ from aiogram import Router, html, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.fsm.context import FSMContext
+import re
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
@@ -15,6 +16,15 @@ _db: Database | None = None
 def setup(database: Database) -> None:
     global _db
     _db = database
+
+
+GENERATION_METADATA_PATTERN = re.compile(r'\s*\[type=[^\]]+\]\s*$')
+
+def clean_prompt_text(text: str) -> str:
+    """Remove generation metadata suffix from prompt text."""
+    if not text:
+        return ""
+    return GENERATION_METADATA_PATTERN.sub('', text).rstrip()
 
 
 def _language_keyboard() -> InlineKeyboardMarkup:
@@ -117,17 +127,16 @@ async def start(message: Message, state: FSMContext) -> None:
             generation_data = await _db.get_generation(gen_id)
 
         if generation_data and generation_data.get("prompt"):
-            prompt_text = generation_data["prompt"]
+            prompt_text = clean_prompt_text(generation_data["prompt"])
             update_kwargs = {
                 "gen_type": "text_photo",
                 "prompt": prompt_text,
                 "lang": lang,
-                "preferred_model": "nano-banana-pro"
+                "preferred_model": "nano-banana-pro",
+                "ratio": "3:4",
+                "resolution": "2K",
+                "tokens_required": 10
             }
-            if is_author_prompt:
-                update_kwargs["ratio"] = "3:4"
-                update_kwargs["resolution"] = "2K"
-                update_kwargs["tokens_required"] = 10
             
             await state.update_data(**update_kwargs)
             
