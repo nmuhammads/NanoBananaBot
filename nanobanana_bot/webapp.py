@@ -411,6 +411,81 @@ async def nanobanana_callback(request: Request) -> dict:
 
     if is_failed:
         fail_msg = ((data.get("data") or {}).get("failMsg")) or data.get("msg") or "Ошибка генерации"
+        
+        # --- AUTO RETRY LOGIC ---
+        try:
+            retry_count = 0
+            if param_json:
+                import json
+                try:
+                    param_obj = json.loads(param_json)
+                    retry_count = int((param_obj.get("meta") or {}).get("retry_count", 0))
+                except Exception:
+                    pass
+            
+            is_internal_error = "internal error" in str(fail_msg).lower()
+            err_code = (data.get("data") or {}).get("code") or data.get("code")
+            
+            if is_internal_error and err_code in (429, 501, 500, "429", "501", "500"):
+                if retry_count < 1 and generation_id is not None and user_id is not None:
+                    logger.info("Auto-retrying generation_id=%s for user=%s due to internal error (retry %s)", generation_id, user_id, retry_count + 1)
+                    
+                    async def do_retry():
+                        import asyncio
+                        await asyncio.sleep(5)
+                        try:
+                            gen = await db.get_generation(int(generation_id))
+                            if not gen:
+                                return
+                            
+                            prompt_with_meta = gen.get("prompt", "")
+                            prompt = prompt_with_meta.split(" [type=")[0].strip()
+                            db_model = gen.get("model")
+                            model = "nano-banana-pro" if db_model == "nanobanana-pro" else "google/nano-banana"
+                            
+                            ratio_val = "auto"
+                            import re
+                            m = re.search(r"ratio=([^;\]]+)", prompt_with_meta)
+                            if m:
+                                ratio_val = m.group(1).strip()
+                            
+                            ratio_map = {
+                                "1:1": "1:1",
+                                "3:4": "3:4",
+                                "4:3": "4:3",
+                                "9:16": "9:16",
+                                "16:9": "16:9",
+                            }
+                            image_size = ratio_map.get(ratio_val)
+                            image_urls = gen.get("input_images", [])
+                            
+                            new_meta = {"generationId": generation_id, "userId": user_id, "tokens": tokens_required, "retry_count": retry_count + 1}
+                            if model == "nano-banana-pro":
+                                await generation_service.generate_pro(
+                                    prompt=prompt,
+                                    image_urls=image_urls or None,
+                                    aspect_ratio=image_size,
+                                    resolution="2K",
+                                    meta=new_meta
+                                )
+                            else:
+                                await client.generate_image(
+                                    prompt=prompt,
+                                    model=model,
+                                    image_urls=image_urls or None,
+                                    image_size=image_size,
+                                    output_format="png",
+                                    meta=new_meta
+                                )
+                        except Exception as e:
+                            logger.exception("Failed to auto-retry generation: %s", e)
+                            
+                    import asyncio
+                    asyncio.create_task(do_retry())
+                    return {"ok": True}
+        except Exception as e:
+            logger.warning("Error in auto-retry logic: %s", e)
+        # ------------------------
         # Обновим статус генерации в базе, если есть id
         if generation_id is not None:
             try:

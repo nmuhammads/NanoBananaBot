@@ -1,6 +1,8 @@
 from aiogram import Router, html, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.fsm.context import FSMContext
+import re
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
@@ -14,6 +16,15 @@ _db: Database | None = None
 def setup(database: Database) -> None:
     global _db
     _db = database
+
+
+GENERATION_METADATA_PATTERN = re.compile(r'\s*\[type=[^\]]+\]\s*$')
+
+def clean_prompt_text(text: str) -> str:
+    """Remove generation metadata suffix from prompt text."""
+    if not text:
+        return ""
+    return GENERATION_METADATA_PATTERN.sub('', text).rstrip()
 
 
 def _language_keyboard() -> InlineKeyboardMarkup:
@@ -37,9 +48,10 @@ def get_main_keyboard(lang: str) -> ReplyKeyboardMarkup:
 
 
 @router.message(CommandStart())
-async def start(message: Message) -> None:
+async def start(message: Message, state: FSMContext) -> None:
     assert _db is not None
     ref_value = None
+    gen_id = None
     try:
         txt = message.text or ""
         if txt.startswith("/start"):
@@ -59,7 +71,18 @@ async def start(message: Message) -> None:
         if ref_value:
             val = ref_value.strip()
             if val.lower().startswith("ref_"):
-                tag = val[4:].lstrip("@").strip()
+                # Парсинг опционального суффикса _gen_{id}
+                ref_part = val
+                if "_gen_" in val:
+                    parts = val.split("_gen_")
+                    if len(parts) == 2:
+                        ref_part = parts[0]
+                        try:
+                            gen_id = int(parts[1])
+                        except ValueError:
+                            gen_id = str(parts[1])
+
+                tag = ref_part[4:].lstrip("@").strip()
                 safe = "".join(ch for ch in tag if ch.isalnum() or ch in {"_", "-"})
                 if safe:
                     user = await _db.get_user(message.from_user.id)
@@ -69,19 +92,69 @@ async def start(message: Message) -> None:
                         await _db.set_ref(message.from_user.id, safe)
     except Exception:
         pass
-    # Если пользователя нет в базе — это первый запуск: сначала попросим выбрать язык
+    # Если пользователя нет в базе — это первый запуск: автоматическая регистрация с языком пользователя (fallback to en)
     existing = await _db.get_user(message.from_user.id)
     if not existing:
-        lang_hint = normalize_lang(message.from_user.language_code)
-        await message.answer(
-            t(lang_hint, "start.choose_language"),
-            reply_markup=_language_keyboard(),
+        lang_code = message.from_user.language_code or "en"
+        lang_code = "ru" if lang_code.lower().startswith("ru") else "en"
+        
+        await _db.get_or_create_user(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name,
+            language_code=lang_code,
         )
-        return
+        existing = await _db.get_user(message.from_user.id) or {}
 
     # Иначе — обычное приветствие с уже выбранным языком
     lang = normalize_lang(existing.get("language_code") or message.from_user.language_code)
     balance = await _db.get_token_balance(message.from_user.id)
+
+    # Если передан gen_id, переходим к FSM генерации
+    if gen_id is not None:
+        is_author_prompt = isinstance(gen_id, str) and str(gen_id).lower().startswith("p")
+        generation_data = None
+        if is_author_prompt:
+            try:
+                num_id = int(str(gen_id)[1:])
+                author_prompt = await _db.get_author_prompt(num_id)
+                if author_prompt and author_prompt.get("prompt_text"):
+                    generation_data = {"prompt": author_prompt["prompt_text"]}
+            except ValueError:
+                pass
+        else:
+            generation_data = await _db.get_generation(gen_id)
+
+        if generation_data and generation_data.get("prompt"):
+            prompt_text = clean_prompt_text(generation_data["prompt"])
+            update_kwargs = {
+                "gen_type": "text_photo",
+                "prompt": prompt_text,
+                "lang": lang,
+                "preferred_model": "nano-banana-pro",
+                "ratio": "3:4",
+                "resolution": "2K",
+                "tokens_required": 10
+            }
+            
+            await state.update_data(**update_kwargs)
+            
+            avatars = await _db.list_avatars(message.from_user.id)
+            if avatars:
+                await state.set_state("GenerateStates:choosing_avatar")
+                from .generate import avatar_source_keyboard
+                await message.answer(
+                    f"✨ 🍌 NanoBanana Pro\n\nПромпт получен. " + t(lang, "avatars.choose_source"),
+                    reply_markup=avatar_source_keyboard(lang)
+                )
+            else:
+                await state.update_data(photos_needed=1, photos=[])
+                await state.set_state("GenerateStates:waiting_photos")
+                await message.answer(
+                    f"✨ 🍌 NanoBanana Pro\n\nПромпт получен. " + t(lang, "gen.upload_photo")
+                )
+            return
 
     keyboard = get_main_keyboard(lang)
 

@@ -154,6 +154,17 @@ class Database:
         rows = getattr(res, "data", []) or []
         return rows[0] if rows else None
 
+    async def get_author_prompt(self, prompt_id: int) -> Optional[Dict[str, Any]]:
+        res = (
+            self.client.table("author_prompts")
+            .select("*")
+            .eq("id", prompt_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", []) or []
+        return rows[0] if rows else None
+
     async def upload_avatar(
         self, user_id: int, file_bytes: bytes, display_name: str, content_type: Optional[str] = None
     ) -> Dict[str, Any]:
