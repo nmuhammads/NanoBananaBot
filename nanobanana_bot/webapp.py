@@ -145,6 +145,9 @@ async def _setup_webhook_with_retries(
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    # Initialize async Supabase client
+    await db.init()
+
     # Ensure webhook URL is provided for webhook mode
     if not settings.webhook_url:
         raise RuntimeError("WEBHOOK_URL is required for webhook mode (Railway)")
@@ -496,10 +499,7 @@ async def nanobanana_callback(request: Request) -> dict:
         # Попробуем получить user_id из записи генерации, если он отсутствует
         if user_id is None and generation_id is not None:
             try:
-                gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
-                rows = getattr(gen, "data", []) or []
-                if rows:
-                    user_id = rows[0].get("user_id")
+                user_id = await db.get_generation_user_id(int(generation_id))
             except Exception as e:
                 logger.warning("Failed to fetch user_id for failed generation id=%s: %s", generation_id, e)
 
@@ -517,9 +517,7 @@ async def nanobanana_callback(request: Request) -> dict:
         if user_id is not None:
             try:
                 try:
-                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
-                    rows = getattr(res, "data", []) or []
-                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                    lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
 
@@ -579,13 +577,7 @@ async def nanobanana_callback(request: Request) -> dict:
             # If user_id absent, try to fetch from generation record
             if user_id is None:
                 try:
-                    # Lazy import to avoid circular
-                    from .database import Database  # already imported above
-                    # Use internal client to query
-                    gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
-                    rows = getattr(gen, "data", []) or []
-                    if rows:
-                        user_id = rows[0].get("user_id")
+                    user_id = await db.get_generation_user_id(int(generation_id))
                 except Exception as e:
                     logger.warning("Failed to fetch generation user_id id=%s: %s", generation_id, e)
 
@@ -594,9 +586,7 @@ async def nanobanana_callback(request: Request) -> dict:
             try:
                 # Определим язык пользователя для подписи
                 try:
-                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
-                    rows = getattr(res, "data", []) or []
-                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                    lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
                 # Отправим изображение как документ (URLInputFile) без изменения расширения
@@ -725,10 +715,7 @@ async def piapi_callback(request: Request) -> dict:
         # Fetch user_id from generation if not provided
         if user_id is None and generation_id:
             try:
-                gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
-                rows = getattr(gen, "data", []) or []
-                if rows:
-                    user_id = rows[0].get("user_id")
+                user_id = await db.get_generation_user_id(int(generation_id))
             except Exception as e:
                 logger.warning("Failed to fetch user_id: %s", e)
         
@@ -737,9 +724,7 @@ async def piapi_callback(request: Request) -> dict:
             try:
                 # Get user language
                 try:
-                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
-                    rows = getattr(res, "data", []) or []
-                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                    lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
                 
@@ -804,10 +789,7 @@ async def piapi_callback(request: Request) -> dict:
         # Fetch user_id if needed
         if user_id is None and generation_id:
             try:
-                gen = db.client.table("generations").select("user_id").eq("id", int(generation_id)).limit(1).execute()
-                rows = getattr(gen, "data", []) or []
-                if rows:
-                    user_id = rows[0].get("user_id")
+                user_id = await db.get_generation_user_id(int(generation_id))
             except Exception:
                 pass
         
@@ -823,9 +805,7 @@ async def piapi_callback(request: Request) -> dict:
             
             try:
                 try:
-                    res = db.client.table("users").select("language_code").eq("user_id", int(user_id)).limit(1).execute()
-                    rows = getattr(res, "data", []) or []
-                    lang = normalize_lang(rows[0].get("language_code") if rows else None)
+                    lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
                 
@@ -937,9 +917,7 @@ async def tribute_webhook(request: Request, trbt_signature: str | None = Header(
         await db.set_token_balance(tg_user_id, new_balance)
 
         try:
-            res = db.client.table("users").select("language_code").eq("user_id", tg_user_id).limit(1).execute()
-            rows = getattr(res, "data", []) or []
-            lang = normalize_lang(rows[0].get("language_code") if rows else None)
+            lang = normalize_lang(await db.get_user_language(tg_user_id))
         except Exception:
             lang = "ru"
         await bot.send_message(chat_id=tg_user_id, text=t(lang, "topup.success", amount=int(tokens), balance=new_balance))
