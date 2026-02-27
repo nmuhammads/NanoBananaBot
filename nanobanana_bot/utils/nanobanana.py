@@ -77,9 +77,9 @@ class NanoBananaClient:
                 cleaned_urls.append(su)
             input_obj["image_urls"] = cleaned_urls
         
-        # Специальная обработка для nano-banana-pro
-        if payload.get("model") == "nano-banana-pro":
-            # Для Pro модели: минимальный набор параметров согласно документации API
+        # Специальная обработка для nano-banana-pro и nano-banana-2
+        if payload.get("model") in ("nano-banana-pro", "nano-banana-2"):
+            # Для Pro/NB2 модели: минимальный набор параметров согласно документации API
             # Удаляем все лишние поля
             input_obj.pop("image_urls", None)
             input_obj.pop("image_size", None)
@@ -97,20 +97,21 @@ class NanoBananaClient:
             if resolution:
                 input_obj["resolution"] = resolution
             elif "resolution" not in input_obj:
-                input_obj["resolution"] = "2K"
+                # Дефолт: 2K для Pro, 1K для NB2
+                input_obj["resolution"] = "1K" if payload.get("model") == "nano-banana-2" else "2K"
         
         payload["input"] = input_obj
         
-        # Логирование полного payload для отладки Pro модели
-        if payload.get("model") == "nano-banana-pro":
+        # Логирование полного payload для отладки Pro/NB2 модели
+        if payload.get("model") in ("nano-banana-pro", "nano-banana-2"):
             import json
-            self._logger.info("NanoBanana Pro payload: %s", json.dumps(payload, ensure_ascii=False, default=str))
+            self._logger.info("NanoBanana %s payload: %s", payload.get("model"), json.dumps(payload, ensure_ascii=False, default=str))
         if meta:
             payload["meta"] = meta
 
         # Endpoint selection
-        # Для Pro используем строго официальный KIE API, независимо от base_url.
-        if str(payload.get("model")) == "nano-banana-pro":
+        # Для Pro/NB2 используем строго официальный KIE API, независимо от base_url.
+        if str(payload.get("model")) in ("nano-banana-pro", "nano-banana-2"):
             url = "https://api.kie.ai/api/v1/jobs/createTask"
         else:
             if "api.kie.ai" in self.base_url or "/api/v1" in self.base_url:
