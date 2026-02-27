@@ -1029,6 +1029,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                     "gen_type": gen_type,
                     "ratio": ratio,
                     "image_resolution": None,
+                    "resolution": st.get("resolution"),
                     "max_images": selected_photo_count if isinstance(selected_photo_count, int) else 1,
                     "photos": photos,
                     "avatar_file_path": st.get("avatar_file_path"),
