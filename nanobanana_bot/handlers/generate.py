@@ -52,6 +52,7 @@ class GenerateStates(StatesGroup):
     waiting_photos = State()
     choosing_ratio = State()
     choosing_resolution = State()
+    choosing_google_search = State()
     confirming = State()
     repeating_confirm = State()
 
@@ -76,6 +77,8 @@ GEN_TRIGGERS = {
     t("en", "kb.new_generation"),
     t("ru", "kb.nanobanana_pro"),
     t("en", "kb.nanobanana_pro"),
+    t("ru", "kb.nanobanana_2"),
+    t("en", "kb.nanobanana_2"),
 }
 
 def trigger_filter(message: Message) -> bool:
@@ -109,10 +112,22 @@ async def restart_generate_any_state(message: Message, state: FSMContext) -> Non
         await state.update_data(preferred_model="nano-banana-pro")
         return
 
-    # Если пользователь был в Pro-режиме и начинает новую генерацию там же, сохраняем режим
+    if text in {t("ru", "kb.nanobanana_2"), t("en", "kb.nanobanana_2")}:
+        assert _db is not None
+        balance = await _db.get_token_balance(message.from_user.id)
+        user = await _db.get_user(message.from_user.id) or {}
+        lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+        if balance < 5:
+            await message.answer(t(lang, "gen.not_enough_tokens", balance=balance, required=5))
+            return
+        await start_generate(message, state)
+        await state.update_data(preferred_model="nano-banana-2")
+        return
+
+    # Если пользователь был в Pro/NB2-режиме и начинает новую генерацию там же, сохраняем режим
     await start_generate(message, state)
-    if saved_preferred_model == "nano-banana-pro":
-        await state.update_data(preferred_model="nano-banana-pro")
+    if saved_preferred_model in ("nano-banana-pro", "nano-banana-2"):
+        await state.update_data(preferred_model=saved_preferred_model)
 
 def type_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     kb = [
@@ -176,6 +191,25 @@ def resolution_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     )
 
 
+def resolution_keyboard_nb2(lang: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"1K (5 🍌)", callback_data="res:1K")],
+            [InlineKeyboardButton(text=f"2K (7 🍌)", callback_data="res:2K")],
+            [InlineKeyboardButton(text=f"4K (10 🍌)", callback_data="res:4K")],
+        ]
+    )
+
+
+def google_search_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "gen.google_search.enable"), callback_data="gsearch:on")],
+            [InlineKeyboardButton(text=t(lang, "gen.google_search.skip"), callback_data="gsearch:off")],
+        ]
+    )
+
+
 def confirm_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -189,7 +223,7 @@ def post_result_reply_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
-            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "kb.nanobanana_2")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
             [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
         ],
         resize_keyboard=True,
@@ -373,6 +407,9 @@ async def receive_prompt(message: Message, state: FSMContext) -> None:
         if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
             await start_generate(message, state)
             await state.update_data(preferred_model="nano-banana-pro")
+        elif text in {t("ru", "kb.nanobanana_2"), t("en", "kb.nanobanana_2")}:
+            await start_generate(message, state)
+            await state.update_data(preferred_model="nano-banana-2")
         else:
             await start_generate(message, state)
         return
@@ -697,10 +734,13 @@ async def require_photo(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     st = await state.get_data()
     lang = st.get("lang")
-    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation"), t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
+    if text in {t("ru", "kb.generate"), t("en", "kb.generate"), t("ru", "kb.new_generation"), t("en", "kb.new_generation"), t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro"), t("ru", "kb.nanobanana_2"), t("en", "kb.nanobanana_2")}:
         if text in {t("ru", "kb.nanobanana_pro"), t("en", "kb.nanobanana_pro")}:
             await start_generate(message, state)
             await state.update_data(preferred_model="nano-banana-pro")
+        elif text in {t("ru", "kb.nanobanana_2"), t("en", "kb.nanobanana_2")}:
+            await start_generate(message, state)
+            await state.update_data(preferred_model="nano-banana-2")
         else:
             await start_generate(message, state)
         return
@@ -746,6 +786,8 @@ async def show_confirmation(message_or_callback, state: FSMContext, lang: str) -
         summary += f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     if resolution and price:
         summary += f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
+    if st.get("google_search"):
+        summary += f"{t(lang, 'gen.summary.google_search')}\n"
         
     if gen_type in {"text_photo", "text_multi", "edit_photo"}:
         if photos:
@@ -808,10 +850,16 @@ async def choose_ratio(callback: CallbackQuery, state: FSMContext) -> None:
     st2 = await state.get_data()
     lang = st2.get("lang")
 
-    # If NanoBanana Pro, go to resolution selection
+    # If NanoBanana Pro or NB2, go to resolution selection
     if preferred_model == "nano-banana-pro":
         await state.set_state(GenerateStates.choosing_resolution)
         await callback.message.edit_text(t(lang, "gen.choose_resolution"), reply_markup=resolution_keyboard(lang))
+        await callback.answer()
+        return
+    
+    if preferred_model == "nano-banana-2":
+        await state.set_state(GenerateStates.choosing_resolution)
+        await callback.message.edit_text(t(lang, "gen.choose_resolution"), reply_markup=resolution_keyboard_nb2(lang))
         await callback.answer()
         return
 
@@ -831,10 +879,43 @@ async def choose_resolution(callback: CallbackQuery, state: FSMContext) -> None:
 
     st = await state.get_data()
     lang = st.get("lang")
+    preferred_model = st.get("preferred_model")
     
-    # Determine price based on resolution
-    price = 10 if resolution == "2K" else 15
+    # Determine price based on resolution and model
+    if preferred_model == "nano-banana-2":
+        price_map = {"1K": 5, "2K": 7, "4K": 10}
+        price = price_map.get(resolution, 5)
+        await state.update_data(tokens_required=price)
+        # Показываем выбор Google Search для NB2
+        await state.set_state(GenerateStates.choosing_google_search)
+        await callback.message.edit_text(
+            t(lang, "gen.google_search.title"),
+            reply_markup=google_search_keyboard(lang),
+        )
+        await callback.answer()
+        return
+    else:
+        # Pro model
+        price = 10 if resolution == "2K" else 15
     await state.update_data(tokens_required=price)
+
+    await show_confirmation(callback, state, lang)
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_google_search), F.data.startswith("gsearch:"))
+async def choose_google_search(callback: CallbackQuery, state: FSMContext) -> None:
+    data = callback.data or ""
+    if not data.startswith("gsearch:"):
+        await callback.answer()
+        return
+    choice = data.split(":", 1)[1]
+    google_search_enabled = choice == "on"
+    await state.update_data(google_search=google_search_enabled)
+    _logger.info("User %s chose google_search=%s", callback.from_user.id, google_search_enabled)
+
+    st = await state.get_data()
+    lang = st.get("lang")
 
     await show_confirmation(callback, state, lang)
     await callback.answer()
@@ -872,7 +953,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     if stored_tokens:
         required_tokens = int(stored_tokens)
     else:
-        required_tokens = 15 if preferred == "nano-banana-pro" else 3
+        if preferred == "nano-banana-pro":
+            required_tokens = 15
+        elif preferred == "nano-banana-2":
+            required_tokens = 5
+        else:
+            required_tokens = 3
         
     balance = await _db.get_token_balance(user_id)
     if balance < required_tokens:
@@ -885,7 +971,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Трекинг генерации в Supabase
     preferred = str(st.get("preferred_model") or "")
-    db_model = "nanobanana-pro" if preferred == "nano-banana-pro" else "nanobanana"
+    if preferred == "nano-banana-pro":
+        db_model = "nanobanana-pro"
+    elif preferred == "nano-banana-2":
+        db_model = "nanobanana-2"
+    else:
+        db_model = "nanobanana"
     
     # Конвертация Telegram photo file_id → доступный URL (для edit-модели и сохранения в БД)
     image_urls = []
@@ -958,6 +1049,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     preferred = str(st.get("preferred_model") or "")
     if preferred == "nano-banana-pro":
         model = "nano-banana-pro"
+    elif preferred == "nano-banana-2":
+        model = "nano-banana-2"
     else:
         model = "google/nano-banana-edit" if len(photos) > 0 else "google/nano-banana"
 
@@ -975,6 +1068,8 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                     "gen_type": gen_type,
                     "ratio": ratio,
                     "image_resolution": None,
+                    "resolution": st.get("resolution"),
+                    "google_search": st.get("google_search", False),
                     "max_images": selected_photo_count if isinstance(selected_photo_count, int) else 1,
                     "photos": photos,
                     "avatar_file_path": st.get("avatar_file_path"),
@@ -992,7 +1087,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         if _r2 and telegram_urls_to_upload:
              asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(telegram_urls_to_upload), _r2, _db))
 
-        # Для NanoBanana Pro используем GenerationService с fallback
+        # Для NanoBanana Pro/NB2 используем GenerationService
         if model == "nano-banana-pro" and _gen_service is not None:
             _logger.info("Using GenerationService with fallback for Pro model")
             result = await _gen_service.generate_pro(
@@ -1002,6 +1097,20 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 resolution=st.get("resolution") or "2K",
                 meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
             )
+        elif model == "nano-banana-2" and _gen_service is not None:
+            _logger.info("Using GenerationService for NanoBanana 2")
+            result = await _gen_service.generate_nb2(
+                prompt=prompt,
+                image_urls=image_urls or None,
+                aspect_ratio=image_size,
+                resolution=st.get("resolution") or "1K",
+                google_search=bool(st.get("google_search", False)),
+                meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
+            )
+        else:
+            result = None
+
+        if result is not None:
             # Сохраним провайдера в БД
             if gen_id is not None:
                 try:
@@ -1026,7 +1135,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 image_url = result.get("image_url")
                 if not image_url:
                     raise RuntimeError("No image URL in generation result")
-        else:
+        if result is None:
             # Стандартный путь через NanoBananaClient
             image_url = await _client.generate_image(
                 prompt=prompt,
@@ -1249,7 +1358,14 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     if not model:
         model = "google/nano-banana-edit" if photos else "google/nano-banana"
         _logger.info("Repeat: model not in payload, using default: %s", model)
-    required_tokens = 15 if model == "nano-banana-pro" else 3
+    required_tokens = 3  # default
+    if model == "nano-banana-pro":
+        required_tokens = 15
+    elif model == "nano-banana-2":
+        # Для NB2 цена зависит от resolution
+        nb2_res = payload.get("resolution") or "1K"
+        nb2_price_map = {"1K": 5, "2K": 7, "4K": 10}
+        required_tokens = nb2_price_map.get(nb2_res, 5)
     balance = await _db.get_token_balance(user_id)
     if balance < required_tokens:
         await callback.message.edit_text(t(lang, "gen.not_enough_tokens", balance=balance, required=required_tokens))
@@ -1257,7 +1373,12 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
     payload_desc = f"repeat_of={origin_gen_id}; type={gen_type}; ratio={ratio_val}; photos={len(photos)}; avatars=0"
-    db_model = "nanobanana-pro" if model == "nano-banana-pro" else "nanobanana"
+    if model == "nano-banana-pro":
+        db_model = "nanobanana-pro"
+    elif model == "nano-banana-2":
+        db_model = "nanobanana-2"
+    else:
+        db_model = "nanobanana"
     
     image_urls: list[str] = []
     telegram_urls_to_upload: list[str] = []
@@ -1323,7 +1444,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         if _r2 and telegram_urls_to_upload:
              asyncio.create_task(upload_to_r2_and_update_db(int(gen_id), list(telegram_urls_to_upload), _r2, _db))
 
-        # Для NanoBanana Pro используем GenerationService с fallback
+        # Для NanoBanana Pro/NB2 используем GenerationService
         if model == "nano-banana-pro" and _gen_service is not None:
             _logger.info("Repeat: Using GenerationService with fallback for Pro model")
             result = await _gen_service.generate_pro(
@@ -1333,6 +1454,20 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
                 resolution=payload.get("resolution") or "2K",
                 meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
             )
+        elif model == "nano-banana-2" and _gen_service is not None:
+            _logger.info("Repeat: Using GenerationService for NanoBanana 2")
+            result = await _gen_service.generate_nb2(
+                prompt=prompt,
+                image_urls=image_urls or None,
+                aspect_ratio=image_size,
+                resolution=payload.get("resolution") or "1K",
+                google_search=bool(payload.get("google_search", False)),
+                meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
+            )
+        else:
+            result = None
+
+        if result is not None:
             # Сохраним провайдера в БД
             if gen_id is not None:
                 try:
@@ -1359,7 +1494,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
                 image_url = result.get("image_url")
                 if not image_url:
                     raise RuntimeError("No image URL in repeat generation result")
-        else:
+        if result is None:
             # Для базовой модели используем старый API
             image_url = await _client.generate_image(
                 prompt=prompt,

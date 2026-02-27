@@ -22,6 +22,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.avatars": "Мои аватары 👤",
         "kb.generate": "Базовая генерация 🖼️",
         "kb.nanobanana_pro": "Nanobanana Pro 🔥",
+        "kb.nanobanana_2": "NanoBanana 2 ✨",
         "kb.repeat_generation": "Повторить последнюю генерацию 🔁",
         "kb.new_generation": "Новая генерация 🆕",
         "kb.start": "Старт ⏮️",
@@ -35,7 +36,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Генерация изображений по тексту\n"
             "• Текст + фото, несколько фото\n"
             "• Редактирование фото ✂️\n\n"
-            "💳 Стоимость: базовая — <b>3 токена</b>, Pro — <b>10 токенов</b> (2K) / <b>15 токенов</b> (4K)\n"
+            "💳 Стоимость:\n"
+            "• Базовая — <b>3 токена</b>\n"
+            "• NanoBanana 2 — <b>5</b> (1K) / <b>7</b> (2K) / <b>10</b> (4K)\n"
+            "• Pro — <b>10</b> (2K) / <b>15</b> (4K)\n"
             "💰 Ваш баланс: <b>{balance}</b> ✨\n\n"
             "Выберите действие на клавиатуре:"
         ),
@@ -47,6 +51,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "ℹ️ <b>Помощь</b>\n\n"
             "🤖 <b>Основные возможности:</b>\n"
             "• <b>NanoBanana Basic</b> — быстрая генерация (3 токена).\n"
+            "• <b>NanoBanana 2</b> — новая модель 1K/2K/4K (5/7/10 токенов).\n"
             "• <b>NanoBanana Pro</b> — высокое качество 2K/4K (10/15 токенов).\n"
             "• <b>Аватары 👤</b> — сохраните персонажа, чтобы использовать его в генерациях (Текст + Фото/Мульти).\n"
             "• <b>Мульти-фото</b> — используйте несколько референсов или аватаров одновременно.\n\n"
@@ -64,8 +69,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Для Pro-режима доступны разные разрешения (Square, Youtube, Portrait).\n\n"
             "💎 <b>Стоимость:</b>\n"
             "Basic: 3 🍌\n"
-            "Pro 2K: 10 🍌\n"
-            "Pro 4K: 15 🍌\n"
+            "NB2 1K: 5 🍌 | 2K: 7 🍌 | 4K: 10 🍌\n"
+            "Pro 2K: 10 🍌 | 4K: 15 🍌\n"
         ),
 
         # Avatars
@@ -97,6 +102,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Действия:\n"
             "• Пополнить баланс ✨ — откроет меню пополнения\n"
             "• Базовая генерация 🖼️ — 3 токена\n"
+            "• NanoBanana 2 ✨ — 5/7/10 токенов (1K/2K/4K)\n"
             "• Nanobanana Pro 🔥 — 10/15 токенов (2K/4K)\n\n"
             "Команды: /help"
         ),
@@ -157,6 +163,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.summary.prompt": "• Промпт: {prompt}",
         "gen.summary.ratio": "• Соотношение сторон: {ratio}",
         "gen.summary.resolution": "• Разрешение: {resolution} ({price} 🍌)",
+        "gen.summary.google_search": "• 🌐 Google Search: Включен",
+        "gen.google_search.title": "🌐 <b>Google Search</b>\n\nПозволяет генерировать изображения на основе актуальной информации из интернета. Например: курсы валют, погода, новости и т.д.\n\nВключить функцию?",
+        "gen.google_search.enable": "🌐 Включить Google Search",
+        "gen.google_search.skip": "➡️ Пропустить",
         "gen.summary.photos": "• Фото: {count} из {needed}",
         "gen.confirm.ok": "✅ Подтвердить",
         "gen.confirm.cancel": "❌ Отмена",
@@ -179,6 +189,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "kb.avatars": "My Avatars 👤",
         "kb.generate": "Basic generation 🖼️",
         "kb.nanobanana_pro": "Nanobanana Pro 🔥",
+        "kb.nanobanana_2": "NanoBanana 2 ✨",
         "kb.repeat_generation": "Repeat last generation 🔁",
         "kb.new_generation": "New generation 🆕",
         "kb.start": "Start ⏮️",
@@ -192,7 +203,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Text-to-image generation\n"
             "• Text + photo, multiple photos\n"
             "• Edit photo ✂️\n\n"
-            "💳 Cost: basic — <b>3 tokens</b>, Pro — <b>10 tokens</b> (2K) / <b>15 tokens</b> (4K)\n"
+            "💳 Cost:\n"
+            "• Basic — <b>3 tokens</b>\n"
+            "• NanoBanana 2 — <b>5</b> (1K) / <b>7</b> (2K) / <b>10</b> (4K)\n"
+            "• Pro — <b>10</b> (2K) / <b>15</b> (4K)\n"
             "💰 Your balance: <b>{balance}</b> ✨\n\n"
             "Choose an action on the keyboard:"
         ),
@@ -204,6 +218,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "ℹ️ <b>Help</b>\n\n"
             "🤖 <b>Key Features:</b>\n"
             "• <b>NanoBanana Basic</b> — fast generation (3 tokens).\n"
+            "• <b>NanoBanana 2</b> — new model 1K/2K/4K (5/7/10 tokens).\n"
             "• <b>NanoBanana Pro</b> — high quality 2K/4K (10/15 tokens).\n"
             "• <b>Avatars 👤</b> — save a character to reuse in generations (Text + Photo/Multi).\n"
             "• <b>Multi-photo</b> — use multiple references or avatars at once.\n\n"
@@ -221,8 +236,8 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "• Pro mode supports various aspect ratios (Square, Youtube, Portrait).\n\n"
             "💎 <b>Cost:</b>\n"
             "Basic: 3 🍌\n"
-            "Pro 2K: 10 🍌\n"
-            "Pro 4K: 15 🍌\n"
+            "NB2 1K: 5 🍌 | 2K: 7 🍌 | 4K: 10 🍌\n"
+            "Pro 2K: 10 🍌 | 4K: 15 🍌\n"
         ),
 
         # Avatars
@@ -254,6 +269,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
             "Actions:\n"
             "• Top up ✨ — opens the top‑up menu\n"
             "• Basic generation 🖼️ — 3 tokens\n"
+            "• NanoBanana 2 ✨ — 5/7/10 tokens (1K/2K/4K)\n"
             "• Nanobanana Pro 🔥 — 10/15 tokens (2K/4K)\n\n"
             "Commands: /help"
         ),
@@ -314,6 +330,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "gen.summary.prompt": "• Prompt: {prompt}",
         "gen.summary.ratio": "• Aspect ratio: {ratio}",
         "gen.summary.resolution": "• Resolution: {resolution} ({price} 🍌)",
+        "gen.summary.google_search": "• 🌐 Google Search: Enabled",
+        "gen.google_search.title": "🌐 <b>Google Search</b>\n\nGenerate images based on real-time information from the web. For example: exchange rates, weather, news, etc.\n\nEnable this feature?",
+        "gen.google_search.enable": "🌐 Enable Google Search",
+        "gen.google_search.skip": "➡️ Skip",
         "gen.summary.photos": "• Photos: {count} of {needed}",
         "gen.confirm.ok": "✅ Confirm",
         "gen.confirm.cancel": "❌ Cancel",

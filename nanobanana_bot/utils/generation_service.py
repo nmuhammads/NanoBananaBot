@@ -117,7 +117,7 @@ class GenerationService:
         )
 
         # Helper to generate with specific provider
-        async def generate_with(provider: ApiProvider) -> Dict[str, Any]:
+        async def generate_with(provider: ApiProvider, model_name: str = "nano-banana-pro") -> Dict[str, Any]:
             if provider == "piapi":
                 task_id = await self.piapi.create_task(
                     prompt=prompt,
@@ -136,7 +136,7 @@ class GenerationService:
                 try:
                     result = await self.kie.generate_image(
                         prompt=prompt,
-                        model="nano-banana-pro",
+                        model=model_name,
                         image_urls=image_urls,
                         image_size=aspect_ratio,
                         resolution=resolution,
@@ -195,3 +195,57 @@ class GenerationService:
                     primary, error, backup, backup_error
                 )
                 raise RuntimeError(f"Both providers unavailable. {backup_error}")
+
+    async def generate_nb2(
+        self,
+        prompt: str,
+        image_urls: Optional[List[str]] = None,
+        aspect_ratio: Optional[str] = None,
+        resolution: str = "1K",
+        google_search: bool = False,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate NanoBanana 2 image.
+        
+        NB2 uses only KIE provider (no piapi fallback).
+        
+        Returns dict with keys:
+            - task_id: str
+            - provider: 'kie'
+            - awaiting_callback: bool
+        """
+        self._logger.info("Starting NanoBanana 2 generation: resolution=%s", resolution)
+        
+        try:
+            result = await self.kie.generate_image(
+                prompt=prompt,
+                model="nano-banana-2",
+                image_urls=image_urls,
+                image_size=aspect_ratio,
+                resolution=resolution,
+                google_search=google_search,
+                meta=meta,
+            )
+            # If we got an image URL directly, return it
+            if result and not result.startswith("TIMEOUT"):
+                return {
+                    "task_id": None,
+                    "provider": "kie",
+                    "awaiting_callback": False,
+                    "image_url": result,
+                }
+        except RuntimeError as e:
+            if "awaiting callback" in str(e).lower():
+                return {
+                    "task_id": None,
+                    "provider": "kie",
+                    "awaiting_callback": True,
+                }
+            raise
+        
+        return {
+            "task_id": None,
+            "provider": "kie",
+            "awaiting_callback": True,
+        }
