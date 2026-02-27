@@ -31,6 +31,7 @@ class NanoBananaClient:
         output_format: Optional[str] = "png",
         meta: Optional[Dict[str, Any]] = None,
         resolution: Optional[str] = None,
+        google_search: bool = False,
     ) -> str:
         """
         Calls NanoBanana API to generate an image.
@@ -99,6 +100,10 @@ class NanoBananaClient:
             elif "resolution" not in input_obj:
                 # Дефолт: 2K для Pro, 1K для NB2
                 input_obj["resolution"] = "1K" if payload.get("model") == "nano-banana-2" else "2K"
+            
+            # google_search для NB2
+            if google_search and payload.get("model") == "nano-banana-2":
+                input_obj["google_search"] = True
         
         payload["input"] = input_obj
         

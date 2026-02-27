@@ -202,6 +202,7 @@ class GenerationService:
         image_urls: Optional[List[str]] = None,
         aspect_ratio: Optional[str] = None,
         resolution: str = "1K",
+        google_search: bool = False,
         meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
@@ -223,6 +224,7 @@ class GenerationService:
                 image_urls=image_urls,
                 image_size=aspect_ratio,
                 resolution=resolution,
+                google_search=google_search,
                 meta=meta,
             )
             # If we got an image URL directly, return it

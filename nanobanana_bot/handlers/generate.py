@@ -52,6 +52,7 @@ class GenerateStates(StatesGroup):
     waiting_photos = State()
     choosing_ratio = State()
     choosing_resolution = State()
+    choosing_google_search = State()
     confirming = State()
     repeating_confirm = State()
 
@@ -196,6 +197,15 @@ def resolution_keyboard_nb2(lang: str | None = None) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=f"1K (5 🍌)", callback_data="res:1K")],
             [InlineKeyboardButton(text=f"2K (7 🍌)", callback_data="res:2K")],
             [InlineKeyboardButton(text=f"4K (10 🍌)", callback_data="res:4K")],
+        ]
+    )
+
+
+def google_search_keyboard(lang: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "gen.google_search.enable"), callback_data="gsearch:on")],
+            [InlineKeyboardButton(text=t(lang, "gen.google_search.skip"), callback_data="gsearch:off")],
         ]
     )
 
@@ -776,6 +786,8 @@ async def show_confirmation(message_or_callback, state: FSMContext, lang: str) -
         summary += f"{t(lang, 'gen.summary.ratio', ratio=ratio)}\n"
     if resolution and price:
         summary += f"{t(lang, 'gen.summary.resolution', resolution=resolution, price=price)}\n"
+    if st.get("google_search"):
+        summary += f"{t(lang, 'gen.summary.google_search')}\n"
         
     if gen_type in {"text_photo", "text_multi", "edit_photo"}:
         if photos:
@@ -873,10 +885,37 @@ async def choose_resolution(callback: CallbackQuery, state: FSMContext) -> None:
     if preferred_model == "nano-banana-2":
         price_map = {"1K": 5, "2K": 7, "4K": 10}
         price = price_map.get(resolution, 5)
+        await state.update_data(tokens_required=price)
+        # Показываем выбор Google Search для NB2
+        await state.set_state(GenerateStates.choosing_google_search)
+        await callback.message.edit_text(
+            t(lang, "gen.google_search.title"),
+            reply_markup=google_search_keyboard(lang),
+        )
+        await callback.answer()
+        return
     else:
         # Pro model
         price = 10 if resolution == "2K" else 15
     await state.update_data(tokens_required=price)
+
+    await show_confirmation(callback, state, lang)
+    await callback.answer()
+
+
+@router.callback_query(StateFilter(GenerateStates.choosing_google_search), F.data.startswith("gsearch:"))
+async def choose_google_search(callback: CallbackQuery, state: FSMContext) -> None:
+    data = callback.data or ""
+    if not data.startswith("gsearch:"):
+        await callback.answer()
+        return
+    choice = data.split(":", 1)[1]
+    google_search_enabled = choice == "on"
+    await state.update_data(google_search=google_search_enabled)
+    _logger.info("User %s chose google_search=%s", callback.from_user.id, google_search_enabled)
+
+    st = await state.get_data()
+    lang = st.get("lang")
 
     await show_confirmation(callback, state, lang)
     await callback.answer()
@@ -1030,6 +1069,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                     "ratio": ratio,
                     "image_resolution": None,
                     "resolution": st.get("resolution"),
+                    "google_search": st.get("google_search", False),
                     "max_images": selected_photo_count if isinstance(selected_photo_count, int) else 1,
                     "photos": photos,
                     "avatar_file_path": st.get("avatar_file_path"),
@@ -1064,6 +1104,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 image_urls=image_urls or None,
                 aspect_ratio=image_size,
                 resolution=st.get("resolution") or "1K",
+                google_search=bool(st.get("google_search", False)),
                 meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
             )
         else:
@@ -1420,6 +1461,7 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
                 image_urls=image_urls or None,
                 aspect_ratio=image_size,
                 resolution=payload.get("resolution") or "1K",
+                google_search=bool(payload.get("google_search", False)),
                 meta={"generationId": gen_id, "userId": user_id, "tokens": required_tokens},
             )
         else:
