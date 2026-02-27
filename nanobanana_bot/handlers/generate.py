@@ -213,7 +213,7 @@ def post_result_reply_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=t(lang, "kb.repeat_generation"))],
-            [KeyboardButton(text=t(lang, "kb.generate")), KeyboardButton(text=t(lang, "kb.nanobanana_2")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
+            [KeyboardButton(text=t(lang, "kb.nanobanana_2")), KeyboardButton(text=t(lang, "kb.nanobanana_pro"))],
             [KeyboardButton(text=t(lang, "kb.profile")), KeyboardButton(text=t(lang, "avatars.btn_label")), KeyboardButton(text=t(lang, "kb.topup"))],
         ],
         resize_keyboard=True,
