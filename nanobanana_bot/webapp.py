@@ -19,6 +19,7 @@ from .utils.piapi import PiapiClient
 from .utils.generation_service import GenerationService
 from .utils.i18n import t, normalize_lang
 from .utils.r2 import R2Client
+from .utils.telegram_draft import send_message_draft
 from .middlewares.logging import SimpleLoggingMiddleware
 from .middlewares.rate_limit import RateLimitMiddleware
 from .handlers import start as start_handler
@@ -520,6 +521,13 @@ async def nanobanana_callback(request: Request) -> dict:
                     lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
+                if generation_id is not None:
+                    await send_message_draft(
+                        bot,
+                        user_id,
+                        generation_id,
+                        t(lang, "gen.draft.failed"),
+                    )
 
                 reply_markup = ReplyKeyboardMarkup(
                     keyboard=[
@@ -589,6 +597,13 @@ async def nanobanana_callback(request: Request) -> dict:
                     lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
+                if generation_id is not None:
+                    await send_message_draft(
+                        bot,
+                        user_id,
+                        generation_id,
+                        t(lang, "gen.draft.completed"),
+                    )
                 # Отправим изображение как документ (URLInputFile) без изменения расширения
                 from urllib.parse import urlparse
                 filename = "image"
@@ -727,6 +742,13 @@ async def piapi_callback(request: Request) -> dict:
                     lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
+                if generation_id is not None:
+                    await send_message_draft(
+                        bot,
+                        user_id,
+                        generation_id,
+                        t(lang, "gen.draft.completed"),
+                    )
                 
                 reply_markup = ReplyKeyboardMarkup(
                     keyboard=[
@@ -808,6 +830,13 @@ async def piapi_callback(request: Request) -> dict:
                     lang = normalize_lang(await db.get_user_language(int(user_id)))
                 except Exception:
                     lang = "ru"
+                if generation_id is not None:
+                    await send_message_draft(
+                        bot,
+                        user_id,
+                        generation_id,
+                        t(lang, "gen.draft.failed"),
+                    )
                 
                 reply_markup = ReplyKeyboardMarkup(
                     keyboard=[
