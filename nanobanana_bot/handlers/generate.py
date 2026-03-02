@@ -19,10 +19,10 @@ from ..utils.nanobanana import NanoBananaClient
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..utils.r2 import R2Client
+from ..utils.telegram_draft import send_message_draft
 from ..cache import Cache
 import asyncio
 import logging
-import httpx
 
 
 from .start import get_main_keyboard
@@ -940,6 +940,7 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     st = await state.get_data()
     user_id = callback.from_user.id
+    lang = st.get("lang")
     prompt = st.get("prompt")
     gen_type = st.get("gen_type")
     ratio = st.get("ratio", "auto")
@@ -1054,6 +1055,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     )
     gen_id = generation.get("id")
     _logger.info("Generation created id=%s user=%s type=%s ratio=%s photos=%s model=%s", gen_id, user_id, gen_type, ratio, len(photos), db_model)
+    if gen_id is not None:
+        await send_message_draft(
+            callback.message.bot,
+            user_id,
+            int(gen_id),
+            t(lang, "gen.draft.starting"),
+        )
 
     # Подготовка параметров KIE API
     ratio_map = {
@@ -1143,7 +1151,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 new_balance = max(0, int(current_balance) - required_tokens)
                 await _db.set_token_balance(user_id, new_balance)
                 _logger.info("Debited %s tokens (async): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
-                lang = st.get("lang")
+                if gen_id is not None:
+                    await send_message_draft(
+                        callback.message.bot,
+                        user_id,
+                        int(gen_id),
+                        t(lang, "gen.draft.processing"),
+                    )
                 await callback.message.edit_text(t(lang, "gen.task_accepted"))
                 await state.clear()
                 await callback.answer("Started")
@@ -1174,7 +1188,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
             new_balance = max(0, int(current_balance) - required_tokens)
             await _db.set_token_balance(user_id, new_balance)
             _logger.info("Debited %s tokens (async): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
-            lang = st.get("lang")
+            if gen_id is not None:
+                await send_message_draft(
+                    callback.message.bot,
+                    user_id,
+                    int(gen_id),
+                    t(lang, "gen.draft.processing"),
+                )
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
             await callback.answer("Started")
@@ -1182,6 +1202,12 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
         if gen_id is not None:
             await _db.mark_generation_failed(gen_id, str(e))
+            await send_message_draft(
+                callback.message.bot,
+                user_id,
+                int(gen_id),
+                t(lang, "gen.draft.failed"),
+            )
         
         err_str = str(e)
         
@@ -1222,7 +1248,13 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
 
-    lang = st.get("lang")
+    if gen_id is not None:
+        await send_message_draft(
+            callback.message.bot,
+            user_id,
+            int(gen_id),
+            t(lang, "gen.draft.completed"),
+        )
     await callback.message.edit_caption(
         caption=t(lang, "gen.done_text", balance=new_balance, ratio=ratio),
     ) if callback.message.photo else await callback.message.edit_text(
@@ -1438,6 +1470,13 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
         )
         gen_id = gen.get("id")
         _logger.info("Repeat generation created id=%s user=%s type=%s ratio=%s photos=%s", gen_id, user_id, gen_type, ratio_val, len(photos))
+        if gen_id is not None:
+            await send_message_draft(
+                callback.message.bot,
+                user_id,
+                int(gen_id),
+                t(lang, "gen.draft.starting"),
+            )
     except Exception as e:
         _logger.error("Failed to create generation record: %s", e)
         await callback.message.edit_text(t(lang, "gen.error_db"))
@@ -1504,6 +1543,13 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
                     current_balance,
                     new_balance,
                 )
+                if gen_id is not None:
+                    await send_message_draft(
+                        callback.message.bot,
+                        user_id,
+                        int(gen_id),
+                        t(lang, "gen.draft.processing"),
+                    )
                 await callback.message.edit_text(t(lang, "gen.task_accepted"))
                 await state.clear()
                 await callback.answer("Started")
@@ -1529,12 +1575,25 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
             new_balance = max(0, int(current_balance) - required_tokens)
             await _db.set_token_balance(user_id, new_balance)
             _logger.info("Debited %s tokens (async repeat): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
+            if gen_id is not None:
+                await send_message_draft(
+                    callback.message.bot,
+                    user_id,
+                    int(gen_id),
+                    t(lang, "gen.draft.processing"),
+                )
             await callback.message.edit_text(t(lang, "gen.task_accepted"))
             await state.clear()
             await callback.answer("Started")
             return
         if gen_id is not None:
             await _db.mark_generation_failed(gen_id, str(e))
+            await send_message_draft(
+                callback.message.bot,
+                user_id,
+                int(gen_id),
+                t(lang, "gen.draft.failed"),
+            )
         await callback.message.edit_text(f"Ошибка генерации: {e}")
         _logger.exception("Repeat generation failed user=%s gen_id=%s error=%s", user_id, gen_id, e)
         await state.clear()
@@ -1546,6 +1605,12 @@ async def confirm_repeat(callback: CallbackQuery, state: FSMContext) -> None:
     _logger.info("Debited %s tokens (sync repeat): user=%s balance %s->%s", required_tokens, user_id, current_balance, new_balance)
     if gen_id is not None:
         await _db.mark_generation_completed(gen_id, image_url)
+        await send_message_draft(
+            callback.message.bot,
+            user_id,
+            int(gen_id),
+            t(lang, "gen.draft.completed"),
+        )
     await callback.message.edit_caption(
         caption=t(lang, "gen.done_text", balance=new_balance, ratio=ratio_val),
     ) if callback.message.photo else await callback.message.edit_text(
