@@ -72,7 +72,19 @@ class R2Client:
                         _logger.error(f"Failed to download file from {url}: status {resp.status}")
                         return None
                     content = await resp.read()
-                    content_type = resp.headers.get("Content-Type", "image/png")
+                    content_type = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+                    if not content_type.startswith("image/"):
+                        detected = self._detect_image_content_type(content)
+                        if detected:
+                            _logger.info(
+                                "Overriding URL content-type %r -> %r for %s",
+                                content_type or None,
+                                detected,
+                                url,
+                            )
+                            content_type = detected
+                    if not content_type:
+                        content_type = "image/png"
             
             # Try to extract extension from URL
             file_extension = None
@@ -86,3 +98,17 @@ class R2Client:
         except Exception as e:
             _logger.error(f"Failed to process URL upload for {url}: {e}")
             return None
+
+    @staticmethod
+    def _detect_image_content_type(file_bytes: bytes) -> str | None:
+        if file_bytes.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if file_bytes.startswith(b"GIF87a") or file_bytes.startswith(b"GIF89a"):
+            return "image/gif"
+        if file_bytes.startswith(b"RIFF") and file_bytes[8:12] == b"WEBP":
+            return "image/webp"
+        if file_bytes.startswith(b"BM"):
+            return "image/bmp"
+        return None

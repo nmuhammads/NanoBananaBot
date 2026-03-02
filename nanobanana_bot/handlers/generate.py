@@ -1009,7 +1009,16 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
         try:
             signed = await _db.create_signed_url(avatar_path)
             if signed:
-                image_urls.append(signed)
+                avatar_url = signed
+                if _r2:
+                    try:
+                        r2_avatar_url = await _r2.upload_file_from_url(signed)
+                        if r2_avatar_url:
+                            avatar_url = r2_avatar_url
+                            _logger.info("Avatar R2 upload success: %s -> %s", avatar_path, r2_avatar_url)
+                    except Exception as e:
+                        _logger.warning("Avatar R2 upload failed for %s, fallback to signed URL: %s", avatar_path, e)
+                image_urls.append(avatar_url)
         except Exception as e:
             _logger.warning("Failed to sign avatar url: %s", e)
     
@@ -1020,7 +1029,16 @@ async def confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 try:
                     signed = await _db.create_signed_url(path)
                     if signed:
-                        image_urls.append(signed)
+                        avatar_url = signed
+                        if _r2:
+                            try:
+                                r2_avatar_url = await _r2.upload_file_from_url(signed)
+                                if r2_avatar_url:
+                                    avatar_url = r2_avatar_url
+                                    _logger.info("Avatar R2 upload success: %s -> %s", path, r2_avatar_url)
+                            except Exception as e:
+                                _logger.warning("Avatar R2 upload failed for %s, fallback to signed URL: %s", path, e)
+                        image_urls.append(avatar_url)
                 except Exception as e:
                      _logger.warning("Failed to sign avatar url %s: %s", path, e)
 
