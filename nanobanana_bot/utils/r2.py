@@ -4,6 +4,7 @@ import logging
 from botocore.config import Config
 from uuid import uuid4
 import mimetypes
+from urllib.parse import urlparse
 
 _logger = logging.getLogger("r2_client")
 
@@ -28,13 +29,8 @@ class R2Client:
         if not self.bucket_name:
             return None
 
-        if file_extension:
-            ext = file_extension if file_extension.startswith(".") else f".{file_extension}"
-        else:
-            ext = mimetypes.guess_extension(content_type) or ".png"
-            # Fix for common issues where jpg is guessed as .jpe or similar, or binary as .bin
-            if ext == ".jpe": ext = ".jpg"
-            if ext == ".bin" and "image" in content_type: ext = ".png"
+        guessed_by_type = mimetypes.guess_extension(content_type) or ".png"
+        ext = self._normalize_extension(file_extension) or self._normalize_extension(guessed_by_type) or ".png"
 
         filename = f"{uuid4().hex}{ext}"
 
@@ -86,13 +82,10 @@ class R2Client:
                     if not content_type:
                         content_type = "image/png"
             
-            # Try to extract extension from URL
-            file_extension = None
-            if "." in url.split("/")[-1]:
-                file_extension = os.path.splitext(url)[1]
-                # Remove query params if any
-                if "?" in file_extension:
-                    file_extension = file_extension.split("?")[0]
+            # Extract extension from URL path only (ignore query tokens/signatures).
+            parsed = urlparse(url)
+            file_extension = os.path.splitext(parsed.path)[1]
+            file_extension = self._normalize_extension(file_extension)
 
             return await self.upload_file_from_bytes(content, content_type, file_extension=file_extension)
         except Exception as e:
@@ -111,4 +104,26 @@ class R2Client:
             return "image/webp"
         if file_bytes.startswith(b"BM"):
             return "image/bmp"
+        return None
+
+    @staticmethod
+    def _normalize_extension(ext: str | None) -> str | None:
+        if not ext:
+            return None
+        normalized = ext.strip().lower()
+        if not normalized:
+            return None
+        if not normalized.startswith("."):
+            normalized = f".{normalized}"
+
+        aliases = {
+            ".jpe": ".jpg",
+            ".jpeg": ".jpg",
+            ".tif": ".tiff",
+        }
+        normalized = aliases.get(normalized, normalized)
+
+        allowed = {".jpg", ".png", ".gif", ".webp", ".bmp", ".tiff"}
+        if normalized in allowed:
+            return normalized
         return None
