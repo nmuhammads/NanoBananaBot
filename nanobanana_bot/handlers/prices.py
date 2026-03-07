@@ -4,7 +4,14 @@ from aiogram.types import Message
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
-from ..utils.prices import RUBLE_PRICES, USD_PRICES, format_rubles, format_usd
+from ..utils.prices import (
+    RUBLE_PRICES,
+    USD_PRICES_CENTS,
+    EUR_PRICES_CENTS,
+    format_rubles,
+    format_usd_cents,
+    format_eur_cents,
+)
 
 
 router = Router(name="prices")
@@ -23,26 +30,43 @@ async def prices(message: Message) -> None:
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
 
-    # Build prices list per locale
-    lines: list[str] = []
-    header_key = "prices.rubles.header"
-    if lang == "en":
-        for tokens, usd in sorted(USD_PRICES.items()):
-            lines.append(f"{tokens} tokens — ${format_usd(usd)}")
-        header_key = "prices.usd.header"
-    else:
-        for tokens, rub in sorted(RUBLE_PRICES.items()):
-            lines.append(f"{tokens} токенов — {format_rubles(rub)} руб")
-    prices_block = "\n".join(lines)
-
-    text = (
-        f"{t(lang, 'prices.title')}\n\n"
-        f"{t(lang, header_key)}\n"
-        f"{prices_block}\n\n"
-        f"{t(lang, 'prices.stars.header')}\n"
-        f"{t(lang, 'prices.stars.line')}\n\n"
-        f"{t(lang, 'prices.disclaimer')}"
+    usd_block = "\n".join(
+        f"{tokens} {'tokens' if lang == 'en' else 'токенов'} — {format_usd_cents(usd)}"
+        for tokens, usd in sorted(USD_PRICES_CENTS.items())
     )
+    eur_block = "\n".join(
+        f"{tokens} {'tokens' if lang == 'en' else 'токенов'} — {format_eur_cents(eur)}"
+        for tokens, eur in sorted(EUR_PRICES_CENTS.items())
+    )
+
+    if lang == "en":
+        text = (
+            f"{t(lang, 'prices.title')}\n\n"
+            f"{t(lang, 'prices.usd.header')}\n"
+            f"{usd_block}\n\n"
+            f"{t(lang, 'prices.eur.header')}\n"
+            f"{eur_block}\n\n"
+            f"{t(lang, 'prices.stars.header')}\n"
+            f"{t(lang, 'prices.stars.line')}\n\n"
+            f"{t(lang, 'prices.disclaimer')}"
+        )
+    else:
+        rub_block = "\n".join(
+            f"{tokens} токенов — {format_rubles(rub)} руб"
+            for tokens, rub in sorted(RUBLE_PRICES.items())
+        )
+        text = (
+            f"{t(lang, 'prices.title')}\n\n"
+            f"{t(lang, 'prices.rubles.header')}\n"
+            f"{rub_block}\n\n"
+            f"{t(lang, 'prices.usd.header')}\n"
+            f"{usd_block}\n\n"
+            f"{t(lang, 'prices.eur.header')}\n"
+            f"{eur_block}\n\n"
+            f"{t(lang, 'prices.stars.header')}\n"
+            f"{t(lang, 'prices.stars.line')}\n\n"
+            f"{t(lang, 'prices.disclaimer')}"
+        )
 
     await message.answer(text)
 

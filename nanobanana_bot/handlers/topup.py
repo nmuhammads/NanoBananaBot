@@ -8,17 +8,30 @@ from aiogram.types import (
     LabeledPrice,
     PreCheckoutQuery,
 )
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
 from ..config import Settings
-from ..utils.prices import RUBLE_PRICES, USD_PRICES, format_rubles, format_usd
-from ..utils.hub import make_hub_link, ALLOWED_AMOUNTS
+from ..utils.prices import (
+    RUBLE_PRICES,
+    USD_PRICES_CENTS,
+    EUR_PRICES_CENTS,
+    format_rubles,
+    format_usd_cents,
+    format_eur_cents,
+    calculate_custom_price,
+)
+from ..utils.hub import (
+    make_hub_link,
+    ALLOWED_SBP_AMOUNTS,
+    ALLOWED_STAR_AMOUNTS,
+    MIN_CUSTOM_TOKENS,
+    MAX_CUSTOM_TOKENS,
+    is_valid_custom_tokens,
+)
 import logging
-import asyncio
-import time
-import re
-import httpx
 
 
 router = Router(name="topup")
@@ -26,14 +39,25 @@ _logger = logging.getLogger("nanobanana.topup")
 
 _db: Database | None = None
 _settings: Settings | None = None
-_product_cache: dict[int, tuple[float, dict]] = {}
+
+
+class CardTopupStates(StatesGroup):
+    waiting_amount = State()
 
 
 def setup(database: Database, settings: Settings | None = None) -> None:
     global _db, _settings
     _db = database
-    if settings is not None:
-        _settings = settings
+    _settings = settings
+
+
+def _topup_main_text(lang: str, balance: int) -> str:
+    return (
+        f"{t(lang, 'topup.title')}\n"
+        f"{t(lang, 'topup.balance', balance=balance)}\n"
+        f"{t(lang, 'topup.bonus_info')}\n\n"
+        f"{t(lang, 'topup.method.title')}"
+    )
 
 
 def method_keyboard(lang: str) -> InlineKeyboardMarkup:
@@ -47,21 +71,108 @@ def method_keyboard(lang: str) -> InlineKeyboardMarkup:
     )
 
 
+def _card_currency_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "topup.card_currency.rub"), callback_data="topup_card_currency:rub")],
+            [InlineKeyboardButton(text=t(lang, "topup.card_currency.usd"), callback_data="topup_card_currency:usd")],
+            [InlineKeyboardButton(text=t(lang, "topup.card_currency.eur"), callback_data="topup_card_currency:eur")],
+            [InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_method:menu")],
+        ]
+    )
+
+
+def _card_amount_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "topup.custom_input"), callback_data=f"topup_custom:{method}")],
+            [InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")],
+            [InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_method:menu")],
+        ]
+    )
+
+
+def _payment_link_keyboard(lang: str, url: str, button_text: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=button_text, url=url)],
+            [InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_method:menu")],
+        ]
+    )
+
+
+def _normalize_packages_method(method: str) -> str:
+    m = (method or "").strip().lower()
+    if m in {"invoice", "stars", "xtr"}:
+        return "stars"
+    if m == "sbp":
+        return "sbp"
+    return m
+
+
+def _estimate_card_price(tokens: int, currency: str) -> str:
+    if currency == "usd":
+        cents = USD_PRICES_CENTS.get(tokens)
+        if cents is None:
+            cents = calculate_custom_price(tokens, "usd")["amount"]
+        return format_usd_cents(cents)
+
+    if currency == "eur":
+        cents = EUR_PRICES_CENTS.get(tokens)
+        if cents is None:
+            cents = calculate_custom_price(tokens, "eur")["amount"]
+        return format_eur_cents(cents)
+
+    rubles = RUBLE_PRICES.get(tokens)
+    if rubles is not None:
+        return f"{format_rubles(rubles)} ₽"
+
+    kopecks = calculate_custom_price(tokens, "rub")["amount"]
+    return f"{kopecks / 100:.2f} ₽"
+
+
+async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
+    m = _normalize_packages_method(method)
+    rows: list[list[InlineKeyboardButton]] = []
+
+    if m == "stars":
+        for amount in sorted(ALLOWED_STAR_AMOUNTS):
+            try:
+                url = make_hub_link("stars", amount)
+            except Exception:
+                continue
+            rows.append([InlineKeyboardButton(text=f"{amount} ✨", url=url)])
+
+    elif m == "sbp":
+        for tokens in sorted(ALLOWED_SBP_AMOUNTS):
+            try:
+                url = make_hub_link("sbp", tokens)
+            except Exception:
+                continue
+
+            if lang.startswith("en"):
+                usd_cents = USD_PRICES_CENTS.get(tokens)
+                label = f"{tokens} Token" if usd_cents is None else f"{tokens} Token ~ {format_usd_cents(usd_cents)}"
+            else:
+                rub = RUBLE_PRICES.get(tokens)
+                label = f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
+
+            rows.append([InlineKeyboardButton(text=label, url=url)])
+
+    if not rows:
+        rows = [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]]
+
+    rows.append([InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_method:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.message(Command("topup"))
 async def topup(message: Message) -> None:
     assert _db is not None
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
     balance = await _db.get_token_balance(message.from_user.id)
-    await message.answer(
-        (
-            f"{t(lang, 'topup.title')}\n"
-            f"{t(lang, 'topup.balance', balance=balance)}\n"
-            f"{t(lang, 'topup.bonus_info')}\n\n"
-            f"{t(lang, 'topup.method.title')}"
-        ),
-        reply_markup=method_keyboard(lang),
-    )
+    await message.answer(_topup_main_text(lang, balance), reply_markup=method_keyboard(lang))
 
 
 @router.message((F.text == t("ru", "kb.topup")) | (F.text == t("en", "kb.topup")))
@@ -69,122 +180,130 @@ async def topup_text(message: Message) -> None:
     await topup(message)
 
 
-async def _fetch_product(product_id: int) -> dict | None:
-    if not _settings or not _settings.tribute_api_key:
-        return None
-    # Simple TTL cache (5 minutes)
-    now = time.time()
-    cached = _product_cache.get(product_id)
-    if cached and (now - cached[0] < 300):
-        return cached[1]
-    try:
-        timeout = _settings.request_timeout_seconds if _settings else 30
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            res = await client.get(
-                f"https://tribute.tg/api/v1/products/{product_id}",
-                headers={
-                    "X-Api-Key": _settings.tribute_api_key,
-                    "Api-Key": _settings.tribute_api_key,
-                    "Accept": "application/json",
-                },
-            )
-            res.raise_for_status()
-            data = res.json()
-            _product_cache[product_id] = (now, data)
-            return data
-    except Exception:
-        _logger.warning("Failed to fetch Tribute product id=%s", product_id, exc_info=True)
-        return None
-
-
-async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
-    # Deep links to hub @aiverse_hub_bot for SBP/Card/Stars
-    def _norm(m: str) -> str:
-        m = (m or "").strip().lower()
-        if m in {"invoice", "stars", "xtr"}:  # treat invoice as stars
-            return "stars"
-        if m in {"sbp"}:
-            return "sbp"
-        if m in {"card"}:
-            return "card"
-        return m
-
-    m = _norm(method)
-    rows: list[list[InlineKeyboardButton]] = []
-    buttons: list[InlineKeyboardButton] = []
-    for tokens in sorted(ALLOWED_AMOUNTS):
-        # Filter: 20 and 200 are only for Stars
-        if m != "stars" and tokens in {20, 200}:
-            continue
-        try:
-            url = make_hub_link(m, tokens)
-        except Exception:
-            # Skip unsupported amounts/methods silently
-            continue
-        if m in {"sbp", "card"}:
-            # Localized price label: RU → rubles, EN → dollars
-            if lang.startswith("en"):
-                usd = USD_PRICES.get(int(tokens))
-                label = (
-                    f"{tokens} Token" if usd is None else f"{tokens} Token ~ ${format_usd(usd)}"
-                )
-            else:
-                rub = RUBLE_PRICES.get(int(tokens))
-                label = (
-                    f"{tokens} Токен" if rub is None else f"{tokens} Токен ~ {format_rubles(rub)} руб"
-                )
-        else:  # stars
-            label = f"{tokens} ✨ ({tokens // 2} 🍌)"
-        buttons.append(InlineKeyboardButton(text=label, url=url))
-
-    # Arrange buttons in rows
-    # SBP/Card: 1 per row (long labels)
-    # Stars: 2 per row (short labels)
-    chunk_size = 1 if m in {"sbp", "card"} else 2
-    for i in range(0, len(buttons), chunk_size):
-        rows.append(buttons[i : i + chunk_size])
-
-    if not rows:
-        rows = [[InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")]]
-
-    # Add back button
-    rows.append([InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_main")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 @router.callback_query(F.data == "topup_main")
-async def topup_main_menu(callback: CallbackQuery) -> None:
+async def topup_main_menu(callback: CallbackQuery, state: FSMContext) -> None:
     assert _db is not None
+    await state.clear()
     user = await _db.get_user(callback.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
     balance = await _db.get_token_balance(callback.from_user.id)
-    text = (
-        f"{t(lang, 'topup.title')}\n"
-        f"{t(lang, 'topup.balance', balance=balance)}\n"
-        f"{t(lang, 'topup.bonus_info')}\n\n"
-        f"{t(lang, 'topup.method.title')}"
-    )
+    text = _topup_main_text(lang, balance)
     await callback.message.edit_text(text, reply_markup=method_keyboard(lang))
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("topup_method:"))
-async def choose_method(callback: CallbackQuery) -> None:
+async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
     assert _db is not None
     user = await _db.get_user(callback.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
     method = (callback.data or "").split(":", 1)[1].strip().lower()
-    try:
-        _logger.info("topup_method selected: %s by user=%s", method, callback.from_user.id)
-    except Exception:
-        pass
-    # For all methods (sbp, card, invoice/stars) show deep-link packages
+
+    await state.clear()
+
+    if method == "menu":
+        balance = await _db.get_token_balance(callback.from_user.id)
+        await callback.message.edit_text(_topup_main_text(lang, balance), reply_markup=method_keyboard(lang))
+        await callback.answer("OK")
+        return
+
+    if method == "card":
+        await callback.message.edit_text(t(lang, "topup.card_currency.title"), reply_markup=_card_currency_keyboard(lang))
+        await callback.answer("OK")
+        return
+
     kb = await _packages_keyboard(lang, method)
     await callback.message.edit_text(
         f"{t(lang, 'topup.packages.title')}\n{t(lang, 'topup.link_hint')}",
         reply_markup=kb,
     )
-    await callback.answer()
+    await callback.answer("OK")
+
+
+@router.callback_query(F.data.startswith("topup_card_currency:"))
+async def choose_card_currency(callback: CallbackQuery, state: FSMContext) -> None:
+    assert _db is not None
+    user = await _db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+
+    currency = (callback.data or "").split(":", 1)[1].strip().lower()
+    if currency not in {"rub", "usd", "eur"}:
+        await callback.answer(t(lang, "topup.invalid_amount"), show_alert=True)
+        return
+
+    method = f"card_{currency}"
+    await state.update_data(card_method=method)
+
+    await callback.message.edit_text(
+        t(lang, "topup.card_currency.selected", currency=currency.upper()),
+        reply_markup=_card_amount_keyboard(lang, method),
+    )
+    await callback.answer("OK")
+
+
+@router.callback_query(F.data.startswith("topup_custom:"))
+async def choose_custom_amount(callback: CallbackQuery, state: FSMContext) -> None:
+    assert _db is not None
+    user = await _db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+
+    method = (callback.data or "").split(":", 1)[1].strip().lower()
+    if method not in {"card_rub", "card_usd", "card_eur"}:
+        await callback.answer(t(lang, "topup.invalid_amount"), show_alert=True)
+        return
+
+    await state.update_data(card_method=method)
+    await state.set_state(CardTopupStates.waiting_amount)
+
+    await callback.message.edit_text(
+        t(lang, "topup.card_custom_prompt", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS)
+    )
+    await callback.answer("OK")
+
+
+@router.message(CardTopupStates.waiting_amount)
+async def card_custom_amount_received(message: Message, state: FSMContext) -> None:
+    assert _db is not None
+    user = await _db.get_user(message.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+
+    try:
+        tokens = int((message.text or "").strip())
+    except Exception:
+        await message.answer(t(lang, "topup.card_custom_invalid", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS))
+        return
+
+    if not is_valid_custom_tokens(tokens):
+        await message.answer(t(lang, "topup.card_custom_invalid", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS))
+        return
+
+    data = await state.get_data()
+    method = (data.get("card_method") or "card_rub").strip().lower()
+    await state.clear()
+
+    if method not in {"card_rub", "card_usd", "card_eur"}:
+        method = "card_rub"
+
+    currency = method.split("_", 1)[1]
+    price_display = _estimate_card_price(tokens, currency)
+    payment_url = make_hub_link(method, tokens)
+
+    kb = _payment_link_keyboard(
+        lang,
+        payment_url,
+        t(lang, "topup.card_pay_btn", price=price_display),
+    )
+
+    await message.answer(
+        t(
+            lang,
+            "topup.card_link_ready",
+            tokens=tokens,
+            currency=currency.upper(),
+            price=price_display,
+        ),
+        reply_markup=kb,
+    )
 
 
 @router.callback_query(F.data == "noop")
@@ -220,7 +339,7 @@ async def _send_invoice(message: Message, amount: int) -> None:
         title=t(lang, "topup.invoice_title"),
         description=t(lang, "topup.invoice_desc", amount=amount),
         payload=f"topup:{amount}",
-        provider_token="",  # Stars для цифровых товаров — без провайдера
+        provider_token="",
         currency="XTR",
         prices=prices,
         start_parameter=f"topup_{amount}",
@@ -254,7 +373,6 @@ async def choose_invoice_topup(callback: CallbackQuery) -> None:
 
 @router.pre_checkout_query()
 async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery) -> None:
-    # Разрешаем оплату без дополнительных проверок
     await pre_checkout_query.answer(ok=True)
 
 
