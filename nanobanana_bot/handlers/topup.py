@@ -10,6 +10,7 @@ from aiogram.types import (
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest
 
 from ..database import Database
 from ..utils.i18n import t, normalize_lang
@@ -49,6 +50,39 @@ def setup(database: Database, settings: Settings | None = None) -> None:
     global _db, _settings
     _db = database
     _settings = settings
+
+
+def _get_db() -> Database:
+    if _db is None:
+        raise RuntimeError("Database is not initialized")
+    return _db
+
+
+def _message_user_id(message: Message) -> int:
+    if message.from_user is None:
+        raise RuntimeError("Message user is unavailable")
+    return message.from_user.id
+
+
+def _message_lang_hint(message: Message) -> str | None:
+    return message.from_user.language_code if message.from_user else None
+
+
+def _callback_user_id(callback: CallbackQuery) -> int:
+    if callback.from_user is None:
+        raise RuntimeError("Callback user is unavailable")
+    return callback.from_user.id
+
+
+def _callback_lang_hint(callback: CallbackQuery) -> str | None:
+    return callback.from_user.language_code if callback.from_user else None
+
+
+def _callback_message(callback: CallbackQuery) -> Message:
+    msg = callback.message
+    if not isinstance(msg, Message):
+        raise RuntimeError("Callback message is unavailable")
+    return msg
 
 
 def _topup_main_text(lang: str, balance: int) -> str:
@@ -129,6 +163,25 @@ def _payment_link_keyboard(lang: str, url: str, button_text: str) -> InlineKeybo
     )
 
 
+async def _safe_edit_text(
+    callback: CallbackQuery,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
+    try:
+        msg = _callback_message(callback)
+    except RuntimeError:
+        return
+
+    try:
+        await msg.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e).lower():
+            return
+        _logger.warning("edit_text failed, sending new message: %s", e)
+        await msg.answer(text, reply_markup=reply_markup)
+
+
 def _normalize_packages_method(method: str) -> str:
     m = (method or "").strip().lower()
     if m in {"invoice", "stars", "xtr"}:
@@ -196,10 +249,11 @@ async def _packages_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
 
 @router.message(Command("topup"))
 async def topup(message: Message) -> None:
-    assert _db is not None
-    user = await _db.get_user(message.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
-    balance = await _db.get_token_balance(message.from_user.id)
+    db = _get_db()
+    user_id = _message_user_id(message)
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _message_lang_hint(message))
+    balance = await db.get_token_balance(user_id)
     await message.answer(_topup_main_text(lang, balance), reply_markup=method_keyboard(lang))
 
 
@@ -210,38 +264,42 @@ async def topup_text(message: Message) -> None:
 
 @router.callback_query(F.data == "topup_main")
 async def topup_main_menu(callback: CallbackQuery, state: FSMContext) -> None:
-    assert _db is not None
+    db = _get_db()
+    cb_msg = _callback_message(callback)
+    user_id = _callback_user_id(callback)
     await state.clear()
-    user = await _db.get_user(callback.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
-    balance = await _db.get_token_balance(callback.from_user.id)
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _callback_lang_hint(callback))
+    balance = await db.get_token_balance(user_id)
     text = _topup_main_text(lang, balance)
-    await callback.message.edit_text(text, reply_markup=method_keyboard(lang))
+    await cb_msg.edit_text(text, reply_markup=method_keyboard(lang))
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("topup_method:"))
 async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
-    assert _db is not None
-    user = await _db.get_user(callback.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+    db = _get_db()
+    cb_msg = _callback_message(callback)
+    user_id = _callback_user_id(callback)
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _callback_lang_hint(callback))
     method = (callback.data or "").split(":", 1)[1].strip().lower()
 
     await state.clear()
 
     if method == "menu":
-        balance = await _db.get_token_balance(callback.from_user.id)
-        await callback.message.edit_text(_topup_main_text(lang, balance), reply_markup=method_keyboard(lang))
+        balance = await db.get_token_balance(user_id)
+        await cb_msg.edit_text(_topup_main_text(lang, balance), reply_markup=method_keyboard(lang))
         await callback.answer("OK")
         return
 
     if method == "card":
-        await callback.message.edit_text(t(lang, "topup.card_currency.title"), reply_markup=_card_currency_keyboard(lang))
+        await cb_msg.edit_text(t(lang, "topup.card_currency.title"), reply_markup=_card_currency_keyboard(lang))
         await callback.answer("OK")
         return
 
     kb = await _packages_keyboard(lang, method)
-    await callback.message.edit_text(
+    await cb_msg.edit_text(
         f"{t(lang, 'topup.packages.title')}\n{t(lang, 'topup.link_hint')}",
         reply_markup=kb,
     )
@@ -250,30 +308,35 @@ async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("topup_card_currency:"))
 async def choose_card_currency(callback: CallbackQuery, state: FSMContext) -> None:
-    assert _db is not None
-    user = await _db.get_user(callback.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+    db = _get_db()
+    cb_msg = _callback_message(callback)
+    user_id = _callback_user_id(callback)
+    await callback.answer()
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _callback_lang_hint(callback))
 
     currency = (callback.data or "").split(":", 1)[1].strip().lower()
     if currency not in {"rub", "usd", "eur"}:
-        await callback.answer(t(lang, "topup.invalid_amount"), show_alert=True)
+        await cb_msg.answer(t(lang, "topup.invalid_amount"))
         return
 
     method = f"card_{currency}"
     await state.update_data(card_method=method)
 
-    await callback.message.edit_text(
+    await _safe_edit_text(
+        callback,
         t(lang, "topup.card_currency.selected", currency=currency.upper()),
         reply_markup=_card_amount_keyboard(lang, method),
     )
-    await callback.answer("OK")
 
 
 @router.callback_query(F.data.startswith("topup_custom:"))
 async def choose_custom_amount(callback: CallbackQuery, state: FSMContext) -> None:
-    assert _db is not None
-    user = await _db.get_user(callback.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+    db = _get_db()
+    cb_msg = _callback_message(callback)
+    user_id = _callback_user_id(callback)
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _callback_lang_hint(callback))
 
     method = (callback.data or "").split(":", 1)[1].strip().lower()
     if method not in {"card_rub", "card_usd", "card_eur"}:
@@ -283,7 +346,7 @@ async def choose_custom_amount(callback: CallbackQuery, state: FSMContext) -> No
     await state.update_data(card_method=method)
     await state.set_state(CardTopupStates.waiting_amount)
 
-    await callback.message.edit_text(
+    await cb_msg.edit_text(
         t(lang, "topup.card_custom_prompt", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS)
     )
     await callback.answer("OK")
@@ -291,9 +354,10 @@ async def choose_custom_amount(callback: CallbackQuery, state: FSMContext) -> No
 
 @router.message(CardTopupStates.waiting_amount)
 async def card_custom_amount_received(message: Message, state: FSMContext) -> None:
-    assert _db is not None
-    user = await _db.get_user(message.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    db = _get_db()
+    user_id = _message_user_id(message)
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _message_lang_hint(message))
 
     try:
         tokens = int((message.text or "").strip())
@@ -359,10 +423,15 @@ def topup_keyboard() -> InlineKeyboardMarkup:
 
 
 async def _send_invoice(message: Message, amount: int) -> None:
-    user = await _db.get_user(message.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    db = _get_db()
+    user_id = _message_user_id(message)
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _message_lang_hint(message))
     prices = [LabeledPrice(label=t(lang, "topup.invoice_label", amount=amount), amount=amount)]
-    await message.bot.send_invoice(
+    bot = message.bot
+    if bot is None:
+        raise RuntimeError("Bot instance is unavailable")
+    await bot.send_invoice(
         chat_id=message.chat.id,
         title=t(lang, "topup.invoice_title"),
         description=t(lang, "topup.invoice_desc", amount=amount),
@@ -376,27 +445,30 @@ async def _send_invoice(message: Message, amount: int) -> None:
 
 @router.callback_query(F.data.startswith("topup_invoice:"))
 async def choose_invoice_topup(callback: CallbackQuery) -> None:
+    db = _get_db()
+    cb_msg = _callback_message(callback)
+    user_id = _callback_user_id(callback)
     data = callback.data or ""
     try:
         amount = int(data.split(":", 1)[1])
     except Exception:
-        user = await _db.get_user(callback.from_user.id) or {}
-        lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+        user = await db.get_user(user_id) or {}
+        lang = normalize_lang(user.get("language_code") or _callback_lang_hint(callback))
         await callback.answer(t(lang, "topup.invalid_amount"), show_alert=True)
         return
 
     try:
-        user = await _db.get_user(callback.from_user.id) or {}
-        lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
-        await callback.message.answer(t(lang, "topup.prepare", amount=amount))
-        await _send_invoice(callback.message, amount)
+        user = await db.get_user(user_id) or {}
+        lang = normalize_lang(user.get("language_code") or _callback_lang_hint(callback))
+        await cb_msg.answer(t(lang, "topup.prepare", amount=amount))
+        await _send_invoice(cb_msg, amount)
         await callback.answer("OK")
     except Exception as e:
         _logger.exception("Failed to send Stars invoice: %s", e)
-        user = await _db.get_user(callback.from_user.id) or {}
-        lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+        user = await db.get_user(user_id) or {}
+        lang = normalize_lang(user.get("language_code") or _callback_lang_hint(callback))
         await callback.answer(t(lang, "topup.invoice_fail"), show_alert=True)
-        await callback.message.answer(t(lang, "topup.payment_unavailable"))
+        await cb_msg.answer(t(lang, "topup.payment_unavailable"))
 
 
 @router.pre_checkout_query()
@@ -406,19 +478,20 @@ async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery) -> None:
 
 @router.message(F.successful_payment)
 async def process_successful_payment(message: Message) -> None:
-    assert _db is not None
+    db = _get_db()
+    user_id = _message_user_id(message)
     sp = message.successful_payment
     if not sp or sp.currency != "XTR":
-        user = await _db.get_user(message.from_user.id) or {}
-        lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+        user = await db.get_user(user_id) or {}
+        lang = normalize_lang(user.get("language_code") or _message_lang_hint(message))
         await message.answer(t(lang, "topup.currency_mismatch"))
         return
 
     amount = int(sp.total_amount)
-    current = await _db.get_token_balance(message.from_user.id)
+    current = await db.get_token_balance(user_id)
     new_balance = current + amount
-    await _db.set_token_balance(message.from_user.id, new_balance)
+    await db.set_token_balance(user_id, new_balance)
 
-    user = await _db.get_user(message.from_user.id) or {}
-    lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    user = await db.get_user(user_id) or {}
+    lang = normalize_lang(user.get("language_code") or _message_lang_hint(message))
     await message.answer(t(lang, "topup.success", amount=amount, balance=new_balance))
