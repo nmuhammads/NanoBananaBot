@@ -83,12 +83,37 @@ def _card_currency_keyboard(lang: str) -> InlineKeyboardMarkup:
 
 
 def _card_amount_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
+    currency = "rub"
+    if "_" in method:
+        currency = method.split("_", 1)[1]
+
+    if currency == "usd":
+        price_map = USD_PRICES_CENTS
+    elif currency == "eur":
+        price_map = EUR_PRICES_CENTS
+    else:
+        price_map = RUBLE_PRICES
+
+    token_label = "tokens" if lang.startswith("en") else "токенов"
+    rows: list[list[InlineKeyboardButton]] = []
+
+    for tokens in sorted(price_map):
+        try:
+            url = make_hub_link(method, tokens)
+        except Exception:
+            continue
+        price_display = _estimate_card_price(tokens, currency)
+        rows.append([InlineKeyboardButton(text=f"{tokens} {token_label} • {price_display}", url=url)])
+
+    if not rows:
+        rows.append([InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")])
+
+    rows.append([InlineKeyboardButton(text=t(lang, "topup.custom_input"), callback_data=f"topup_custom:{method}")])
+    rows.append([InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")])
+    rows.append([InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_method:menu")])
+
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=t(lang, "topup.custom_input"), callback_data=f"topup_custom:{method}")],
-            [InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")],
-            [InlineKeyboardButton(text=t(lang, "common.back"), callback_data="topup_method:menu")],
-        ]
+        inline_keyboard=rows
     )
 
 
