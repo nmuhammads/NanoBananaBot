@@ -5,7 +5,6 @@ RUBLE_PRICES: dict[int, int] = {
     800: 1440,
     1500: 2700,
     2000: 3600,
-    5000: 9000,
 }
 
 # tokens -> USD cents
@@ -16,7 +15,6 @@ USD_PRICES_CENTS: dict[int, int] = {
     800: 1872,
     1500: 3510,
     2000: 4680,
-    5000: 11700,
 }
 
 # tokens -> EUR cents
@@ -27,7 +25,6 @@ EUR_PRICES_CENTS: dict[int, int] = {
     800: 1584,
     1500: 2970,
     2000: 3960,
-    5000: 9900,
 }
 
 # Base rates per token in minor units (kopecks/cents)

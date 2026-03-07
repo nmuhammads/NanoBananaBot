@@ -94,8 +94,8 @@ def _card_amount_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
     else:
         price_map = RUBLE_PRICES
 
-    token_label = "tokens" if lang.startswith("en") else "токенов"
     rows: list[list[InlineKeyboardButton]] = []
+    package_buttons: list[InlineKeyboardButton] = []
 
     for tokens in sorted(price_map):
         try:
@@ -103,10 +103,15 @@ def _card_amount_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
         except Exception:
             continue
         price_display = _estimate_card_price(tokens, currency)
-        rows.append([InlineKeyboardButton(text=f"{tokens} {token_label} • {price_display}", url=url)])
+        package_buttons.append(InlineKeyboardButton(text=f"{tokens} • {price_display}", url=url))
 
-    if not rows:
+    if not package_buttons:
         rows.append([InlineKeyboardButton(text=t(lang, "topup.package.unavailable"), callback_data="noop")])
+    else:
+        first_row_size = (len(package_buttons) + 1) // 2
+        rows.append(package_buttons[:first_row_size])
+        if len(package_buttons) > first_row_size:
+            rows.append(package_buttons[first_row_size:])
 
     rows.append([InlineKeyboardButton(text=t(lang, "topup.custom_input"), callback_data=f"topup_custom:{method}")])
     rows.append([InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")])
