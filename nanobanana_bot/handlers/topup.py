@@ -83,13 +83,31 @@ def _card_currency_keyboard(lang: str) -> InlineKeyboardMarkup:
 
 
 def _card_amount_keyboard(lang: str, method: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=t(lang, "topup.custom_input"), callback_data=f"topup_custom:{method}")],
-            [InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")],
-            [InlineKeyboardButton(text=t(lang, "kb.start"), callback_data="topup_method:menu")],
-        ]
-    )
+    currency = method.split("_", 1)[1]
+    if currency == "usd":
+        prices = USD_PRICES_CENTS
+    elif currency == "eur":
+        prices = EUR_PRICES_CENTS
+    else:
+        prices = RUBLE_PRICES
+
+    rows: list[list[InlineKeyboardButton]] = []
+    amounts = sorted(prices.keys())
+    for i in range(0, len(amounts), 2):
+        row = []
+        for j in range(i, min(i + 2, len(amounts))):
+            tokens = amounts[j]
+            price = _estimate_card_price(tokens, currency)
+            row.append(InlineKeyboardButton(
+                text=f"{tokens} — {price}",
+                callback_data=f"topup_card_fixed:{tokens}",
+            ))
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton(text=t(lang, "topup.custom_input"), callback_data=f"topup_custom:{method}")])
+    rows.append([InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")])
+    rows.append([InlineKeyboardButton(text=t(lang, "kb.start"), callback_data="topup_method:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _payment_link_keyboard(lang: str, url: str, button_text: str) -> InlineKeyboardMarkup:
@@ -224,6 +242,40 @@ async def choose_card_currency(callback: CallbackQuery, state: FSMContext) -> No
     await callback.message.edit_text(
         t(lang, "topup.card_currency.selected", currency=currency.upper()),
         reply_markup=_card_amount_keyboard(lang, method),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("topup_card_fixed:"))
+async def choose_card_fixed_amount(callback: CallbackQuery, state: FSMContext) -> None:
+    assert _db is not None
+    user = await _db.get_user(callback.from_user.id) or {}
+    lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
+
+    try:
+        tokens = int((callback.data or "").split(":", 1)[1])
+    except Exception:
+        await callback.answer(t(lang, "topup.invalid_amount"), show_alert=True)
+        return
+
+    data = await state.get_data()
+    method = (data.get("card_method") or "card_rub").strip().lower()
+    if method not in {"card_rub", "card_usd", "card_eur"}:
+        method = "card_rub"
+
+    currency = method.split("_", 1)[1]
+    price_display = _estimate_card_price(tokens, currency)
+    payment_url = make_hub_link(method, tokens)
+
+    kb = _payment_link_keyboard(
+        lang,
+        payment_url,
+        t(lang, "topup.card_pay_btn", price=price_display),
+    )
+
+    await callback.message.edit_text(
+        t(lang, "topup.card_link_ready", tokens=tokens, currency=currency.upper(), price=price_display),
+        reply_markup=kb,
     )
     await callback.answer()
 
