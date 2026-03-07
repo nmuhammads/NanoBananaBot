@@ -190,21 +190,21 @@ async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
 
     if method == "menu":
         balance = await _db.get_token_balance(callback.from_user.id)
-        await callback.message.answer(_topup_main_text(lang, balance), reply_markup=method_keyboard(lang))
-        await callback.answer("OK")
+        await callback.message.edit_text(_topup_main_text(lang, balance), reply_markup=method_keyboard(lang))
+        await callback.answer()
         return
 
     if method == "card":
-        await callback.message.answer(t(lang, "topup.card_currency.title"), reply_markup=_card_currency_keyboard(lang))
-        await callback.answer("OK")
+        await callback.message.edit_text(t(lang, "topup.card_currency.title"), reply_markup=_card_currency_keyboard(lang))
+        await callback.answer()
         return
 
     kb = await _packages_keyboard(lang, method)
-    await callback.message.answer(
+    await callback.message.edit_text(
         f"{t(lang, 'topup.packages.title')}\n{t(lang, 'topup.link_hint')}",
         reply_markup=kb,
     )
-    await callback.answer("OK")
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("topup_card_currency:"))
@@ -221,11 +221,11 @@ async def choose_card_currency(callback: CallbackQuery, state: FSMContext) -> No
     method = f"card_{currency}"
     await state.update_data(card_method=method)
 
-    await callback.message.answer(
+    await callback.message.edit_text(
         t(lang, "topup.card_currency.selected", currency=currency.upper()),
         reply_markup=_card_amount_keyboard(lang, method),
     )
-    await callback.answer("OK")
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("topup_custom:"))
@@ -239,13 +239,17 @@ async def choose_custom_amount(callback: CallbackQuery, state: FSMContext) -> No
         await callback.answer(t(lang, "topup.invalid_amount"), show_alert=True)
         return
 
-    await state.update_data(card_method=method)
+    await state.update_data(card_method=method, prompt_message_id=callback.message.message_id)
     await state.set_state(CardTopupStates.waiting_amount)
 
-    await callback.message.answer(
-        t(lang, "topup.card_custom_prompt", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS)
+    await callback.message.edit_text(
+        t(lang, "topup.card_custom_prompt", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")],
+            [InlineKeyboardButton(text=t(lang, "kb.start"), callback_data="topup_method:menu")],
+        ]),
     )
-    await callback.answer("OK")
+    await callback.answer()
 
 
 @router.message(CardTopupStates.waiting_amount)
@@ -253,18 +257,40 @@ async def card_custom_amount_received(message: Message, state: FSMContext) -> No
     assert _db is not None
     user = await _db.get_user(message.from_user.id) or {}
     lang = normalize_lang(user.get("language_code") or message.from_user.language_code)
+    data = await state.get_data()
+    prompt_msg_id = data.get("prompt_message_id")
+
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t(lang, "topup.back_to_currency"), callback_data="topup_method:card")],
+        [InlineKeyboardButton(text=t(lang, "kb.start"), callback_data="topup_method:menu")],
+    ])
 
     try:
         tokens = int((message.text or "").strip())
     except Exception:
-        await message.answer(t(lang, "topup.card_custom_invalid", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS))
+        tokens = None
+
+    if tokens is None or not is_valid_custom_tokens(tokens):
+        error_text = (
+            f"❌ {t(lang, 'topup.card_custom_invalid', min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS)}\n\n"
+            f"{t(lang, 'topup.card_custom_prompt', min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS)}"
+        )
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        if prompt_msg_id:
+            try:
+                await message.bot.edit_message_text(
+                    text=error_text, chat_id=message.chat.id,
+                    message_id=prompt_msg_id, reply_markup=back_kb,
+                )
+                return
+            except Exception:
+                pass
+        await message.answer(error_text, reply_markup=back_kb)
         return
 
-    if not is_valid_custom_tokens(tokens):
-        await message.answer(t(lang, "topup.card_custom_invalid", min=MIN_CUSTOM_TOKENS, max=MAX_CUSTOM_TOKENS))
-        return
-
-    data = await state.get_data()
     method = (data.get("card_method") or "card_rub").strip().lower()
     await state.clear()
 
@@ -280,17 +306,22 @@ async def card_custom_amount_received(message: Message, state: FSMContext) -> No
         payment_url,
         t(lang, "topup.card_pay_btn", price=price_display),
     )
+    result_text = t(lang, "topup.card_link_ready", tokens=tokens, currency=currency.upper(), price=price_display)
 
-    await message.answer(
-        t(
-            lang,
-            "topup.card_link_ready",
-            tokens=tokens,
-            currency=currency.upper(),
-            price=price_display,
-        ),
-        reply_markup=kb,
-    )
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    if prompt_msg_id:
+        try:
+            await message.bot.edit_message_text(
+                text=result_text, chat_id=message.chat.id,
+                message_id=prompt_msg_id, reply_markup=kb,
+            )
+            return
+        except Exception:
+            pass
+    await message.answer(result_text, reply_markup=kb)
 
 
 @router.callback_query(F.data == "noop")
@@ -351,15 +382,20 @@ async def choose_invoice_topup(callback: CallbackQuery) -> None:
     try:
         user = await _db.get_user(callback.from_user.id) or {}
         lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
-        await callback.message.answer(t(lang, "topup.prepare", amount=amount))
+        await callback.message.edit_text(t(lang, "topup.prepare", amount=amount))
         await _send_invoice(callback.message, amount)
-        await callback.answer("OK")
+        await callback.answer()
     except Exception as e:
         _logger.exception("Failed to send Stars invoice: %s", e)
         user = await _db.get_user(callback.from_user.id) or {}
         lang = normalize_lang(user.get("language_code") or callback.from_user.language_code)
         await callback.answer(t(lang, "topup.invoice_fail"), show_alert=True)
-        await callback.message.answer(t(lang, "topup.payment_unavailable"))
+        await callback.message.edit_text(
+            t(lang, "topup.payment_unavailable"),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=t(lang, "kb.start"), callback_data="topup_method:menu")],
+            ]),
+        )
 
 
 @router.pre_checkout_query()
